@@ -1,0 +1,43 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+coverage/
+.coverage
+htmlcov/
+
+# Local toolchains downloaded by uv into the workspace
+.uv-cache/
+.python/
+.npm-cache/
+
+# Build output
+build/
+dist/
+
+# Runtime data
+/data/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+frontend/.vite/
+*.tsbuildinfo
+
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+.DS_Store

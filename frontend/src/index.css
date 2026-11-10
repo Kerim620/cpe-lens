@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --c-canvas: 245 247 250;
+    --c-card: 255 255 255;
+    --c-elevated: 238 243 248;
+    --c-ink: 22 32 42;
+    --c-muted: 82 99 117;
+    --c-line: 221 228 236;
+    --c-brand: 23 107 135;
+    --c-brand-strong: 17 83 105;
+    --c-brand-soft: 222 240 246;
+    --c-brand-contrast: 255 255 255;
+    --c-success: 22 120 78;
+    --c-warning: 180 83 9;
+    --c-danger: 180 35 24;
+    --c-neutral: 100 116 139;
+    --c-lte: 23 107 135;
+    --c-nr: 124 58 237;
+    --c-download: 23 107 135;
+    --c-upload: 180 83 9;
+    color-scheme: light;
+  }
+
+  .dark {
+    --c-canvas: 11 15 20;
+    --c-card: 18 24 32;
+    --c-elevated: 24 32 43;
+    --c-ink: 230 237 245;
+    --c-muted: 148 163 184;
+    --c-line: 38 50 65;
+    --c-brand: 67 182 212;
+    --c-brand-strong: 108 210 234;
+    --c-brand-soft: 18 48 58;
+    --c-brand-contrast: 6 20 26;
+    --c-success: 74 222 128;
+    --c-warning: 251 191 36;
+    --c-danger: 248 113 113;
+    --c-neutral: 148 163 184;
+    --c-lte: 67 182 212;
+    --c-nr: 167 139 250;
+    --c-download: 67 182 212;
+    --c-upload: 251 191 36;
+    color-scheme: dark;
+  }
+
+  html {
+    @apply bg-canvas;
+  }
+
+  body {
+    @apply min-h-screen bg-canvas font-sans text-ink antialiased;
+    font-size: 15px;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-canvas;
+  }
+
+  ::selection {
+    @apply bg-brand/25;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-semibold tracking-tight text-ink;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-line bg-card shadow-card;
+  }
+
+  .btn {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-control border border-line bg-card px-3 py-2 text-sm font-medium text-ink transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply border-brand bg-brand text-brand-contrast hover:bg-brand-strong hover:text-brand-contrast;
+  }
+
+  .btn-danger {
+    @apply border-danger/40 bg-danger/10 text-danger hover:bg-danger/20;
+  }
+
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:border-line hover:bg-elevated;
+  }
+
+  .field {
+    @apply block w-full min-h-10 rounded-control border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink;
+  }
+
+  .hint {
+    @apply mt-1.5 text-xs leading-5 text-muted;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium leading-5;
+  }
+
+  .nav-link {
+    @apply flex min-h-10 items-center gap-3 rounded-control px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-ink;
+  }
+
+  .nav-link-active {
+    @apply bg-brand-soft text-brand-strong;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
