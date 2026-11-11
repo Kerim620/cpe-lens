@@ -78,7 +78,7 @@ class ClientInfo(BaseModel):
 
     hostname: str | None = None
     ip_address: str | None = None
-    mac_masked: str | None = None
+    mac: str | None = None
     connection_type: ClientConnectionType = ClientConnectionType.UNKNOWN
     online_seconds: int | None = None
 
@@ -97,7 +97,7 @@ class NetworkStatus(BaseModel):
     network_type: str | None = None
     roaming: bool | None = None
     signal_bars: int | None = None
-    wan_ip_masked: str | None = None
+    wan_ip: str | None = None
     connect_time_seconds: int | None = None
     uptime_seconds: int | None = None
 
@@ -122,7 +122,7 @@ class TrafficSnapshot(BaseModel):
 DataT = TypeVar("DataT")
 
 
-class LiveSection(BaseModel, Generic[DataT]):  # noqa: UP046 - Pydantic generic model
+class LiveSection(BaseModel, Generic[DataT]):
     model_config = ConfigDict(extra="forbid")
 
     data: DataT | None = None

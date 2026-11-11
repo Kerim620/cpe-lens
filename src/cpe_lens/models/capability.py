@@ -17,7 +17,6 @@ class CapabilityStatus(StrEnum):
 
 class CapabilityReason(StrEnum):
     OK = "ok"
-    SIMULATED = "simulated"
     WRITE_NOT_VERIFIED = "write_not_verified"
     NO_SAFE_PROBE = "no_safe_probe"
     NO_SUPPORT = "no_support"

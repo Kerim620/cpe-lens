@@ -6,8 +6,8 @@ from pydantic import BaseModel, ConfigDict
 class ErrorInfo(BaseModel):
     """A safe, localizable error description.
 
-    ``detail`` must never contain credentials, cookies, tokens, raw device XML,
-    SMS bodies or unmasked subscriber identifiers.
+    ``detail`` must never contain credentials, cookies, tokens, raw device XML
+    or SMS bodies.
     """
 
     model_config = ConfigDict(extra="forbid")

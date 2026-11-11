@@ -1,362 +1,362 @@
+import { ArrowUpRight, Clock3, Download, Upload, Users } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { ConnectionSnapshot, NetworkStatus, RadioMetrics, SignalSnapshot, TrafficSnapshot } from "../api/types";
-import { ConnectionPanel } from "../components/ConnectionPanel";
-import { ErrorBanner } from "../components/ErrorBanner";
-import { Icon } from "../components/Icon";
-import { InfoRow } from "../components/InfoRow";
-import { LiveNotice } from "../components/LiveNotice";
-import { LoadingState } from "../components/LoadingState";
-import { MetricCard } from "../components/MetricCard";
-import { Notice } from "../components/Notice";
-import { PageHeader } from "../components/PageHeader";
-import { RefreshLiveButton } from "../components/RefreshLiveButton";
-import { SectionError } from "../components/SectionError";
-import { SignalQualityBadge } from "../components/SignalQualityBadge";
-import { errorInfoToUi, useDevice } from "../hooks/useDevice";
-import { useLiveDashboard } from "../hooks/useLiveDashboard";
-import { useI18n } from "../i18n/I18nProvider";
-import {
-  displayValue,
-  formatBitrate,
-  formatBytes,
-  formatDateTime,
-  formatDuration,
-  formatNetworkType,
-  formatSignalNumber,
-} from "../lib/format";
+import type { HistoryRange } from "@/api/types";
+import { Chart } from "@/components/charts/chart";
+import { ConnectionPanel } from "@/components/connection-panel";
+import { EmptyState, LoadingState, SectionError } from "@/components/dashboard/data-state";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { ClientSummaryCard, NetworkStatusCard, TrafficTotalsCard } from "@/components/dashboard/overview-widgets";
+import { RadioSummary } from "@/components/dashboard/radio-summary";
+import { RangeTabs } from "@/components/dashboard/range-tabs";
+import { SectionCard } from "@/components/dashboard/section-card";
+import { ErrorBanner } from "@/components/error-banner";
+import { Button } from "@/components/ui/button";
+import { useDevice } from "@/hooks/useDevice";
+import { useFullscreen } from "@/hooks/useFullscreen";
+import { useHistory } from "@/hooks/useHistory";
+import { useLiveDashboard } from "@/hooks/useLiveDashboard";
+import { useI18n } from "@/i18n/I18nProvider";
+import { formatBitrate, formatBytes, formatChartTime, formatDateTime, formatDb, formatDuration } from "@/lib/format";
 
-function lanHost(address: string | null): string | null {
-  if (!address) {
-    return null;
-  }
-  try {
-    return new URL(address).hostname;
-  } catch {
-    return null;
-  }
-}
-
-function SignalSummary({ radio, metrics }: { radio: "lte" | "nr"; metrics: RadioMetrics }) {
-  const { t, language } = useI18n();
-  return (
-    <div className="rounded-control border border-line bg-elevated/40 px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-xs font-medium text-ink">
-          <span
-            aria-hidden="true"
-            className="h-2 w-2 rounded-full"
-            style={{ backgroundColor: radio === "lte" ? "rgb(var(--c-lte))" : "rgb(var(--c-nr))" }}
-          />
-          {t(radio === "lte" ? "signal.lte" : "signal.nr")}
-        </span>
-        <SignalQualityBadge quality={metrics.quality} />
-      </div>
-      <p className="tabular mt-1 text-xl font-semibold text-ink">
-        {formatSignalNumber(metrics.rsrp_dbm, language)}
-        <span className="ml-1 text-xs font-normal text-muted">{t("unit.dbm")}</span>
-      </p>
-      <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-muted">
-        <span>
-          {t("signal.sinr")} {formatSignalNumber(metrics.sinr_db, language)} {t("unit.db")}
-        </span>
-        <span>
-          {t("signal.rsrq")} {formatSignalNumber(metrics.rsrq_db, language)} {t("unit.db")}
-        </span>
-        <span>
-          {t("signal.band")} {metrics.band ?? t("common.dash")}
-        </span>
-        <span>
-          {t("signal.pci")} {metrics.pci ?? t("common.dash")}
-        </span>
-        <span className="col-span-2 truncate">
-          {t("signal.cellId")} {metrics.cell_id ?? t("common.dash")}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function SpeedCard({
-  traffic,
-  section,
-}: {
-  traffic: TrafficSnapshot | null;
-  section: Parameters<typeof SectionError>[0]["section"];
-}) {
-  const { t, language } = useI18n();
-  return (
-    <section className="card p-5" aria-labelledby="overview-speed">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-base" id="overview-speed">
-          <Icon name="traffic" size={18} />
-          {t("overview.speedTitle")}
-        </h2>
-        <Link className="text-xs font-medium text-brand hover:underline" to="/traffic">
-          {t("overview.details")}
-        </Link>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <MetricCard
-          accent="download"
-          label={t("traffic.download")}
-          value={formatBitrate(traffic?.download_bps ?? null, language)}
-        />
-        <MetricCard
-          accent="upload"
-          label={t("traffic.upload")}
-          value={formatBitrate(traffic?.upload_bps ?? null, language)}
-        />
-      </div>
-      <p className="mt-2 text-xs text-muted">
-        {t("overview.sessionTraffic", {
-          download: formatBytes(traffic?.session_download_bytes ?? null, language),
-          upload: formatBytes(traffic?.session_upload_bytes ?? null, language),
-          duration: formatDuration(traffic?.current_connect_seconds ?? null, language),
-        })}
-      </p>
-      <div className="mt-2">
-        <SectionError section={section} />
-      </div>
-    </section>
-  );
-}
-
-function NetworkCard({
-  status,
-  section,
-  snapshot,
-}: {
-  status: NetworkStatus | null;
-  section: Parameters<typeof SectionError>[0]["section"];
-  snapshot: ConnectionSnapshot;
-}) {
-  const { t, language } = useI18n();
-  return (
-    <section className="card p-5" aria-labelledby="overview-network">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-base" id="overview-network">
-          <Icon name="network" size={18} />
-          {t("overview.networkTitle")}
-        </h2>
-        <span className="chip border-success/30 bg-success/10 text-success">
-          <Icon name="check" size={13} />
-          {t("top.connected")}
-        </span>
-      </div>
-      <dl className="mt-2">
-        <InfoRow label={t("device.operator")} value={displayValue(status?.operator, language)} />
-        <InfoRow
-          label={t("device.networkType")}
-          value={formatNetworkType(status?.network_type ?? snapshot.device?.network_type, language)}
-        />
-        <InfoRow
-          label={t("device.roaming")}
-          value={
-            status?.roaming === null || status?.roaming === undefined
-              ? t("common.dash")
-              : status.roaming
-                ? t("common.yes")
-                : t("common.no")
-          }
-        />
-        <InfoRow label={t("device.wanIp")} mono value={status?.wan_ip_masked ?? t("common.dash")} />
-        <InfoRow label={t("device.lanAddress")} mono value={lanHost(snapshot.address) ?? t("common.dash")} />
-        <InfoRow label={t("device.uptime")} value={formatDuration(status?.uptime_seconds ?? null, language)} />
-        <InfoRow
-          label={t("device.lastSeen")}
-          value={formatDateTime(snapshot.last_seen_at, language, t("common.dash"))}
-        />
-      </dl>
-      <div className="mt-2">
-        <SectionError section={section} />
-      </div>
-    </section>
-  );
+function formatSignal(_label: string, value: number | null | undefined) {
+  return value === null || value === undefined ? "—" : `${value} dBm`;
 }
 
 export function OverviewPage() {
   const { t, language } = useI18n();
   const { snapshot, loading, connecting, error, connect } = useDevice();
-  const { dashboard, loading: liveLoading, refreshing, error: liveError, refresh } = useLiveDashboard();
+  const { dashboard, loading: liveLoading, error: liveError } = useLiveDashboard();
+  const [range, setRange] = useState<HistoryRange>("15m");
+  const connected = snapshot?.connected ?? false;
+  const history = useHistory(range, connected);
+  const { monitoring } = useFullscreen();
 
   if (loading) {
-    return <LoadingState />;
+    return (
+      <div className="space-y-5">
+        <PageHeader title={t("overview.title")} description={t("overview.subtitle")} />
+        <LoadingState rows={4} />
+      </div>
+    );
   }
 
-  const connected = snapshot?.connected ?? false;
-  const report = snapshot?.capability_report ?? null;
-  const capabilities = report?.capabilities ?? [];
-  const counts = {
-    available: capabilities.filter((capability) => capability.status === "available").length,
-    experimental: capabilities.filter((capability) => capability.status === "experimental").length,
-    issues: capabilities.filter((capability) =>
-      ["unavailable", "no_permission", "unsupported", "probe_failed"].includes(capability.status),
-    ).length,
-  };
-  const signal: SignalSnapshot | null = dashboard?.signal.data ?? null;
+  if (!connected) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title={t("overview.title")} description={t("overview.subtitle")} />
+        <ConnectionPanel connecting={connecting} error={error} onConnect={connect} />
+        <p className="mx-auto max-w-2xl text-center text-[11px] leading-5 text-muted-foreground">{t("overview.phaseNote")}</p>
+      </div>
+    );
+  }
+
+  const signal = dashboard?.signal.data ?? null;
   const traffic = dashboard?.traffic.data ?? null;
   const status = dashboard?.status.data ?? null;
+  const clients = dashboard?.clients.data ?? null;
+  const cells = dashboard?.cells.data?.cells ?? [];
+  const points = history.data?.points ?? [];
+  const speedData = points.map((point) => ({
+    label: formatChartTime(point.timestamp, language, range),
+    download: point.download_bps,
+    upload: point.upload_bps,
+  }));
+  const signalData = points.map((point) => ({
+    label: formatChartTime(point.timestamp, language, range),
+    lte: point.lte_rsrp,
+    nr: point.nr_rsrp,
+  }));
+  const volumeData = points.map((point) => ({
+    label: formatChartTime(point.timestamp, language, range),
+    download: point.download_bytes,
+    upload: point.upload_bytes,
+  }));
+  const sinrData = points.map((point) => ({
+    label: formatChartTime(point.timestamp, language, range),
+    lte: point.lte_sinr,
+    nr: point.nr_sinr,
+  }));
+  const rsrqData = points.map((point) => ({
+    label: formatChartTime(point.timestamp, language, range),
+    lte: point.lte_rsrq,
+    nr: point.nr_rsrq,
+  }));
+  const rssiData = points.map((point) => ({
+    label: formatChartTime(point.timestamp, language, range),
+    lte: point.lte_rssi,
+    nr: null,
+  }));
+  const report = snapshot?.capability_report;
+  const capabilityCount = report?.capabilities.length ?? 0;
+  const issueCount =
+    report?.capabilities.filter((item) => ["unsupported", "no_permission", "probe_failed", "unavailable"].includes(item.status)).length ?? 0;
+  const sessionTotal =
+    traffic?.session_download_bytes !== null && traffic?.session_download_bytes !== undefined &&
+    traffic?.session_upload_bytes !== null && traffic?.session_upload_bytes !== undefined
+      ? traffic.session_download_bytes + traffic.session_upload_bytes
+      : null;
+  const latestHistory = history.data?.points.at(-1);
+
+  if (monitoring) {
+    return (
+      <div className="mx-auto flex min-h-full w-full max-w-[1800px] flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <MetricCard color="var(--chart-download)" label={t("traffic.download")} value={formatBitrate(traffic?.download_bps ?? null, language)} />
+          <MetricCard color="var(--chart-upload)" label={t("traffic.upload")} value={formatBitrate(traffic?.upload_bps ?? null, language)} />
+          <MetricCard color="var(--chart-lte)" label={t("signal.lte")} value={formatSignal(t("signal.rsrp"), signal?.lte?.rsrp_dbm)} />
+          <MetricCard color="var(--chart-nr)" label={t("signal.nr")} value={formatSignal(t("signal.rsrp"), signal?.nr?.rsrp_dbm)} />
+        </div>
+        {liveError ? <ErrorBanner error={liveError} /> : null}
+        <div className="grid gap-3 xl:grid-cols-2">
+          <SectionCard
+            actions={<RangeTabs onChange={setRange} value={range} />}
+            title={t("traffic.speedChart")}
+          >
+            <Chart
+              ariaLabel={t("overview.trafficChartAria")}
+              data={speedData}
+              emptyLabel={t("history.empty")}
+              height={250}
+              series={[
+                { key: "download", label: t("traffic.download"), color: "var(--chart-download)" },
+                { key: "upload", label: t("traffic.upload"), color: "var(--chart-upload)" },
+              ]}
+              valueFormatter={(value) => formatBitrate(value, language)}
+              variant="area"
+              yAxisWidth={68}
+            />
+          </SectionCard>
+          <SectionCard title={t("traffic.volumeChart")}>
+            <Chart
+              ariaLabel={t("traffic.volumeChartAria")}
+              data={volumeData}
+              emptyLabel={t("history.empty")}
+              height={250}
+              series={[
+                { key: "download", label: t("traffic.download"), color: "var(--chart-download)" },
+                { key: "upload", label: t("traffic.upload"), color: "var(--chart-upload)" },
+              ]}
+              valueFormatter={(value) => formatBytes(value, language)}
+              variant="bar"
+              yAxisWidth={68}
+            />
+          </SectionCard>
+          <SectionCard title={t("signal.historyTitle")}>
+            <Chart
+              ariaLabel={t("overview.signalChartAria")}
+              data={signalData}
+              emptyLabel={t("history.empty")}
+              height={250}
+              series={[
+                { key: "lte", label: t("signal.lte"), color: "var(--chart-lte)" },
+                { key: "nr", label: t("signal.nr"), color: "var(--chart-nr)" },
+              ]}
+              valueFormatter={(value) => formatDb(value, language)}
+              variant="line"
+            />
+          </SectionCard>
+          <SectionCard title={t("signal.sinrTrend")}>
+            <Chart
+              ariaLabel={t("signal.sinrTrend")}
+              data={sinrData}
+              emptyLabel={t("history.empty")}
+              height={250}
+              series={[
+                { key: "lte", label: t("signal.lte"), color: "var(--chart-lte)" },
+                { key: "nr", label: t("signal.nr"), color: "var(--chart-nr)" },
+              ]}
+              valueFormatter={(value) => formatDb(value, language)}
+              variant="line"
+            />
+          </SectionCard>
+          <SectionCard title={t("signal.rsrqTrend")}>
+            <Chart
+              ariaLabel={t("signal.rsrqTrend")}
+              data={rsrqData}
+              emptyLabel={t("history.empty")}
+              height={250}
+              series={[
+                { key: "lte", label: t("signal.lte"), color: "var(--chart-lte)" },
+                { key: "nr", label: t("signal.nr"), color: "var(--chart-nr)" },
+              ]}
+              valueFormatter={(value) => formatDb(value, language)}
+              variant="line"
+            />
+          </SectionCard>
+          <SectionCard title={t("signal.rssiTrend")}>
+            <Chart
+              ariaLabel={t("signal.rssiTrend")}
+              data={rssiData}
+              emptyLabel={t("history.empty")}
+              height={250}
+              series={[{ key: "lte", label: t("signal.lte"), color: "var(--chart-lte)" }]}
+              valueFormatter={(value) => formatDb(value, language)}
+              variant="line"
+            />
+          </SectionCard>
+        </div>
+        {history.error ? <ErrorBanner error={history.error} /> : null}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        actions={connected ? <RefreshLiveButton onClick={() => void refresh()} refreshing={refreshing} /> : undefined}
-        subtitle={t("overview.subtitle")}
-        title={t("overview.title")}
-      />
+    <div className="space-y-5">
+      <PageHeader description={t("overview.subtitle")} title={t("overview.title")} />
 
-      {!connected ? (
-        <>
-          <Notice icon="plug" variant="info">
-            <p className="font-medium">{t("overview.connectTitle")}</p>
-            <p className="mt-0.5 text-muted">{t("overview.connectBody")}</p>
-          </Notice>
-          {snapshot?.last_error && !error ? (
-            <ErrorBanner error={errorInfoToUi(snapshot.last_error)} title={t("overview.offlineTitle")} />
-          ) : null}
-          <ConnectionPanel connecting={connecting} error={error} onConnect={connect} />
-          <div className="grid gap-3 md:grid-cols-2">
-            <Notice variant="info" icon="info">
-              {t("overview.phaseNote")}
-            </Notice>
-            <Notice variant="success" icon="shield">
-              {t("overview.securityNote")}
-            </Notice>
-          </div>
-        </>
-      ) : (
-        <>
-          <LiveNotice />
-          {liveError ? <ErrorBanner error={liveError} /> : null}
-          {!snapshot?.device ? (
-            <Notice variant="warning" icon="alert">
-              {t("device.infoUnavailable")}
-            </Notice>
-          ) : null}
-          {snapshot?.last_error ? (
-            <ErrorBanner error={errorInfoToUi(snapshot.last_error)} title={t("device.probeError")} />
-          ) : null}
+      {liveError ? <ErrorBanner error={liveError} /> : null}
+      {liveLoading && !dashboard ? <LoadingState rows={2} /> : null}
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-            <span>
-              {t("live.sampledAt", {
-                time: formatDateTime(dashboard?.sampled_at, language, t("common.dash")),
-              })}
-            </span>
-            {liveLoading && !dashboard ? <span>{t("live.waiting")}</span> : null}
-          </div>
 
-          <div className="grid gap-4 xl:grid-cols-3">
-            <SpeedCard section={dashboard?.traffic ?? { data: null, error: null, updated_at: null, stale: false }} traffic={traffic} />
-            <section className="card p-5" aria-labelledby="overview-signal">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="flex items-center gap-2 text-base" id="overview-signal">
-                  <Icon name="signal" size={18} />
-                  {t("overview.signalTitle")}
-                </h2>
-                <Link className="text-xs font-medium text-brand hover:underline" to="/signal">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <MetricCard
+          color="var(--chart-download)"
+          hint={traffic?.today_download_bytes !== null && traffic?.today_download_bytes !== undefined ? `${t("traffic.today")}: ${formatBytes(traffic.today_download_bytes, language)}` : undefined}
+          icon={<Download className="size-4" />}
+          label={t("traffic.download")}
+          trend={points.map((point) => point.download_bps)}
+          value={formatBitrate(traffic?.download_bps ?? null, language)}
+        />
+        <MetricCard
+          color="var(--chart-upload)"
+          hint={traffic?.today_upload_bytes !== null && traffic?.today_upload_bytes !== undefined ? `${t("traffic.today")}: ${formatBytes(traffic.today_upload_bytes, language)}` : undefined}
+          icon={<Upload className="size-4" />}
+          label={t("traffic.upload")}
+          trend={points.map((point) => point.upload_bps)}
+          value={formatBitrate(traffic?.upload_bps ?? null, language)}
+        />
+        <MetricCard
+          color="var(--chart-neutral)"
+          hint={t("traffic.currentSessionHint", { duration: formatDuration(traffic?.current_connect_seconds ?? null, language) })}
+          icon={<Clock3 className="size-4" />}
+          label={t("traffic.session")}
+          value={formatBytes(sessionTotal, language)}
+        />
+        <MetricCard
+          color="var(--chart-lte)"
+          hint={clients ? t("clients.connection.wifi") + ": " + clients.clients.filter((item) => item.connection_type === "wifi").length : undefined}
+          icon={<Users className="size-4" />}
+          label={t("clients.title")}
+          value={clients?.count ?? t("common.dash")}
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <NetworkStatusCard status={status} />
+        <TrafficTotalsCard traffic={traffic} />
+        <ClientSummaryCard clients={clients} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4">
+          <SectionCard
+            actions={<RangeTabs onChange={setRange} value={range} />}
+            description={t("overview.speedChartDescription")}
+            title={t("traffic.speedChart")}
+          >
+            <Chart
+              ariaLabel={t("overview.trafficChartAria")}
+              data={speedData}
+              emptyLabel={t("history.empty")}
+              series={[
+                { key: "download", label: t("traffic.download"), color: "var(--chart-download)" },
+                { key: "upload", label: t("traffic.upload"), color: "var(--chart-upload)" },
+              ]}
+              valueFormatter={(value) => formatBitrate(value, language)}
+              variant="area"
+              yAxisWidth={68}
+            />
+            {dashboard?.traffic ? <SectionError section={dashboard.traffic} /> : null}
+            {history.error ? <ErrorBanner error={history.error} /> : null}
+          </SectionCard>
+
+          <SectionCard
+            actions={
+              <Button asChild size="sm" variant="ghost">
+                <Link to="/signal">
                   {t("overview.details")}
+                  <ArrowUpRight className="size-3" />
                 </Link>
-              </div>
-              <div className="mt-3 space-y-2">
-                {signal?.lte ? <SignalSummary metrics={signal.lte} radio="lte" /> : null}
-                {signal?.nr ? <SignalSummary metrics={signal.nr} radio="nr" /> : null}
-                {!signal?.lte && !signal?.nr ? (
-                  <p className="py-6 text-center text-sm text-muted">{t("signal.noData")}</p>
-                ) : null}
-              </div>
-              <div className="mt-2">
-                <SectionError section={dashboard?.signal ?? { data: null, error: null, updated_at: null, stale: false }} />
-              </div>
-            </section>
-            {snapshot ? (
-              <NetworkCard
-                section={dashboard?.status ?? { data: null, error: null, updated_at: null, stale: false }}
-                snapshot={snapshot}
-                status={status}
-              />
-            ) : null}
-          </div>
+              </Button>
+            }
+            title={t("signal.historyTitle")}
+          >
+            <Chart
+              ariaLabel={t("overview.signalChartAria")}
+              data={signalData}
+              emptyLabel={t("history.empty")}
+              height={220}
+              series={[
+                { key: "lte", label: t("signal.lte"), color: "var(--chart-lte)" },
+                { key: "nr", label: t("signal.nr"), color: "var(--chart-nr)" },
+              ]}
+              valueFormatter={(value) => formatDb(value, language)}
+              variant="line"
+            />
+          </SectionCard>
+        </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <section className="card p-5" aria-labelledby="overview-device">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 text-base" id="overview-device">
-                  <Icon name="device" size={18} />
-                  {t("overview.deviceTitle")}
-                </h2>
-              </div>
-              <dl className="mt-2">
-                <InfoRow label={t("device.model")} value={displayValue(snapshot?.device?.model, language)} />
-                <InfoRow label={t("device.firmware")} value={displayValue(snapshot?.device?.firmware_version, language)} />
-                <InfoRow label={t("device.webui")} value={displayValue(snapshot?.device?.web_ui_version, language)} />
-                <InfoRow label={t("device.imei")} mono value={displayValue(snapshot?.device?.imei_masked, language)} />
-              </dl>
-            </section>
-
-            <section className="card p-5" aria-labelledby="overview-capabilities">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="flex items-center gap-2 text-base" id="overview-capabilities">
-                    <Icon name="shield" size={18} />
-                    {t("overview.capabilitiesTitle")}
-                  </h2>
-                  <p className="mt-1 text-sm text-muted">
-                    {t("overview.capabilitiesBody", {
-                      available: counts.available,
-                      experimental: counts.experimental,
-                      issues: counts.issues,
-                    })}
-                  </p>
-                </div>
-                <Link className="btn" to="/device">
-                  {t("overview.openDevice")}
-                  <Icon name="arrowRight" size={16} />
+        <div className="space-y-4">
+          <RadioSummary signal={signal} />
+          {dashboard?.signal ? <SectionError section={dashboard.signal} /> : null}
+          <SectionCard
+            actions={
+              <Button asChild size="sm" variant="ghost">
+                <Link to="/signal">
+                  {t("overview.details")}
+                  <ArrowUpRight className="size-3" />
                 </Link>
-              </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                {(
-                  [
-                    ["available", counts.available, "border-success/30 bg-success/10 text-success"],
-                    ["experimental", counts.experimental, "border-warning/40 bg-warning/10 text-warning"],
-                    ["issues", counts.issues, "border-danger/30 bg-danger/10 text-danger"],
-                  ] as const
-                ).map(([key, value, className]) => (
-                  <div className={`rounded-control border px-3 py-2 ${className}`} key={key}>
-                    <p className="text-[11px] font-medium">
-                      {key === "issues"
-                        ? t("device.filter.issues")
-                        : t(key === "available" ? "capability.status.available" : "capability.status.experimental")}
-                    </p>
-                    <p className="tabular text-xl font-semibold">{value}</p>
-                  </div>
+              </Button>
+            }
+            title={t("cells.title")}
+          >
+            {cells.length === 0 ? (
+              <EmptyState title={t("cells.empty")} />
+            ) : (
+              <ul className="space-y-2">
+                {cells.slice(0, 3).map((cell, index) => (
+                  <li className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-2 text-[11px]" key={`${cell.radio}-${index}`}>
+                    <span className="font-medium uppercase text-foreground">{cell.radio}</span>
+                    <span className="text-muted-foreground">B{cell.band ?? t("common.dash")} · PCI {cell.pci ?? t("common.dash")}</span>
+                    <span className="font-mono text-muted-foreground">{cell.cell_id ?? t("common.dash")}</span>
+                  </li>
                 ))}
+              </ul>
+            )}
+            {dashboard?.cells ? <div className="mt-3"><SectionError section={dashboard.cells} /></div> : null}
+          </SectionCard>
+          <SectionCard
+            actions={
+              <Button asChild size="sm" variant="ghost">
+                <Link to="/device">
+                  {t("overview.openDevice")}
+                  <ArrowUpRight className="size-3" />
+                </Link>
+              </Button>
+            }
+            title={t("overview.capabilitiesTitle")}
+          >
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-md border border-border p-2 text-center">
+                <p className="tabular text-lg font-semibold text-success">{report?.capabilities.filter((item) => item.status === "available").length ?? 0}</p>
+                <p className="text-[10px] text-muted-foreground">{t("capability.status.available")}</p>
               </div>
-            </section>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link className="btn" to="/signal">
-              <Icon name="signal" size={16} />
-              {t("nav.signal")}
-            </Link>
-            <Link className="btn" to="/traffic">
-              <Icon name="traffic" size={16} />
-              {t("nav.traffic")}
-            </Link>
-            <Link className="btn" to="/clients">
-              <Icon name="clients" size={16} />
-              {t("nav.clients")}
-            </Link>
-          </div>
-
-          <p className="flex items-start gap-2 text-xs leading-5 text-muted">
-            <Icon className="mt-0.5 shrink-0" name="shield" size={14} />
-            {t("overview.securityNote")}
-          </p>
-        </>
-      )}
+              <div className="rounded-md border border-border p-2 text-center">
+                <p className="tabular text-lg font-semibold text-warning">{report?.capabilities.filter((item) => item.status === "experimental").length ?? 0}</p>
+                <p className="text-[10px] text-muted-foreground">{t("capability.status.experimental")}</p>
+              </div>
+              <div className="rounded-md border border-border p-2 text-center">
+                <p className="tabular text-lg font-semibold text-destructive">{issueCount}</p>
+                <p className="text-[10px] text-muted-foreground">{t("device.filter.issues")}</p>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] leading-4 text-muted-foreground">{t("overview.capabilityCount", { count: capabilityCount, latest: formatDateTime(latestHistory?.timestamp ?? null, language, t("common.dash")) })}</p>
+          </SectionCard>
+        </div>
+      </div>
     </div>
   );
 }

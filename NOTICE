@@ -1,0 +1,10 @@
+CPE Lens
+Copyright (c) 2026 CPE Lens contributors
+
+Portions of the frontend chart primitives are adapted from Tremor Raw
+(https://github.com/tremorlabs/tremor), Copyright Tremor Labs, Inc.,
+licensed under the Apache License, Version 2.0. The full license text is
+included in LICENSES/Apache-2.0.txt.
+
+Frontend UI component structure follows shadcn/ui (MIT) and consumes
+Radix UI primitives (MIT).

@@ -69,7 +69,7 @@ def _set_all_probes_ok(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(PROBE_CALLS, capability_id, lambda _client: {"ok": "1"})
 
 
-async def test_device_info_is_normalized_and_identifiers_are_masked() -> None:
+async def test_device_info_is_normalized_and_identifiers_are_visible() -> None:
     adapter = _adapter()
     raw_imei = "123456789012345"
     adapter._client = _client_with_info(
@@ -94,8 +94,8 @@ async def test_device_info_is_normalized_and_identifiers_are_masked() -> None:
     assert info.web_ui_version == "WEB-3"
     assert info.operator == "Test Operator"
     assert info.network_type == "LTE"
-    assert info.imei_masked == "***********2345"
-    assert raw_imei not in dumped
+    assert info.imei == raw_imei
+    assert raw_imei in dumped
     assert "987654321098765" not in dumped
     assert "89860000000000000000" not in dumped
     assert "SERIAL-123" not in dumped
@@ -303,7 +303,7 @@ async def test_huawei_dashboard_reads_are_normalized() -> None:
 
     status = await adapter.get_network_status()
     assert status.operator == "Test Operator"
-    assert status.wan_ip_masked == "198.51.*.*"
+    assert status.wan_ip == "198.51.100.23"
     signal = await adapter.get_signal()
     assert signal.lte is not None
     assert signal.nr is None
@@ -313,4 +313,4 @@ async def test_huawei_dashboard_reads_are_normalized() -> None:
     assert traffic.month_download_bytes == 3000
     clients = await adapter.get_clients()
     assert clients.count == 1
-    assert clients.clients[0].mac_masked == "**:**:**:00:00:01"
+    assert clients.clients[0].mac == "02:00:00:00:00:01"

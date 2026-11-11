@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from cpe_lens.models.errors import DeviceAddressError
-from cpe_lens.utils import mask_identifier, normalize_device_address
+from cpe_lens.utils import normalize_device_address
 
 
 @pytest.mark.parametrize(
@@ -37,10 +37,3 @@ def test_normalize_device_address_accepts_origins(raw: str, expected: str) -> No
 def test_normalize_device_address_rejects_unsafe_forms(raw: str) -> None:
     with pytest.raises(DeviceAddressError):
         normalize_device_address(raw)
-
-
-def test_mask_identifier_keeps_only_suffix() -> None:
-    assert mask_identifier("123456789012345") == "***********2345"
-    assert mask_identifier("REDACTED") is None
-    assert mask_identifier(None) is None
-    assert mask_identifier("12") == "**"

@@ -262,3 +262,71 @@ async def test_too_soon_sample_does_not_create_a_speed_spike(settings: Settings,
     assert after_window.traffic.data.download_bps is not None
     assert after_window.traffic.data.download_bps > 0
     assert after_window.traffic.data.today_download_bytes == 1_000_000
+
+
+async def test_stream_publishes_new_dashboard_after_sample(settings: Settings, tmp_path: Path) -> None:
+    adapter = TelemetryFakeAdapter()
+    manager = _manager(settings, adapter)
+    await _connect(manager)
+    database = Database(settings.database_path)
+    database.initialize()
+    telemetry = TelemetryService(manager, HistoryStore(database), settings)
+
+    stream = telemetry.stream()
+    initial = await anext(stream)
+    assert initial is not None
+
+    adapter.total_download = 2_000
+    adapter.total_upload = 700
+    await asyncio.sleep(0.25)
+    await telemetry.sample_once()
+
+    update = await asyncio.wait_for(anext(stream), timeout=1)
+    assert update is not None
+    assert update.traffic.data is not None
+    assert update.traffic.data.total_download_bytes == 2_000
+    await stream.aclose()
+
+
+async def test_sample_loop_uses_configured_interval(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    interval_settings = settings.model_copy(update={"sample_interval_seconds": 0.2})
+    adapter = TelemetryFakeAdapter()
+    manager = _manager(interval_settings, adapter)
+    database = Database(interval_settings.database_path)
+    database.initialize()
+    telemetry = TelemetryService(manager, HistoryStore(database), interval_settings)
+    calls: list[float] = []
+
+    async def fake_sample_once() -> None:
+        calls.append(asyncio.get_running_loop().time())
+
+    monkeypatch.setattr(telemetry, "sample_once", fake_sample_once)
+    await telemetry.start()
+    await asyncio.sleep(0.55)
+    await telemetry.stop()
+    assert 2 <= len(calls) <= 4
+    assert calls[1] - calls[0] >= 0.15
+
+
+async def test_too_soon_repeat_keeps_last_visible_rate(settings: Settings, tmp_path: Path) -> None:
+    fast_settings = settings.model_copy(update={"sample_interval_seconds": 1})
+    adapter = TelemetryFakeAdapter()
+    manager = _manager(fast_settings, adapter)
+    await _connect(manager)
+    database = Database(fast_settings.database_path)
+    database.initialize()
+    telemetry = TelemetryService(manager, HistoryStore(database), fast_settings)
+
+    await telemetry.sample_once()
+    adapter.total_download += 1_000_000
+    adapter.total_upload += 500_000
+    await asyncio.sleep(1.1)
+    measured = await telemetry.sample_once()
+    assert measured.traffic.data is not None
+    assert measured.traffic.data.download_bps is not None
+
+    immediate = await telemetry.sample_once()
+    assert immediate.traffic.data is not None
+    assert immediate.traffic.data.download_bps == measured.traffic.data.download_bps

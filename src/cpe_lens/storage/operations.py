@@ -19,7 +19,7 @@ def _iso(value: datetime) -> str:
 
 
 class OperationStore:
-    """Persists sanitized operation metadata only.
+    """Persists operation metadata; authentication secrets are never accepted.
 
     Wi-Fi passwords, APN passwords, SMS bodies and tokens must be removed by the
     caller before data reaches this class.

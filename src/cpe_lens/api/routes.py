@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import StreamingResponse
 
 from cpe_lens import __version__
 from cpe_lens.api.schemas import (
@@ -27,6 +29,7 @@ from cpe_lens.models.controls import (
 from cpe_lens.models.device import ConnectionSnapshot, DeviceInfo
 from cpe_lens.models.errors import CapabilitiesNotProbedError
 from cpe_lens.models.history import HistoryRange, HistoryResponse
+from cpe_lens.models.settings import AppSettings, SettingsResponse, apply_app_settings, snapshot_settings
 from cpe_lens.models.telemetry import LiveDashboard
 from cpe_lens.services.controls import OperationService
 from cpe_lens.services.device_manager import ConnectOptions, DeviceManager
@@ -34,6 +37,7 @@ from cpe_lens.services.diagnostics import build_diagnostic_report
 from cpe_lens.services.telemetry import TelemetryService
 from cpe_lens.storage.history import HistoryStore
 from cpe_lens.storage.operations import OperationStore
+from cpe_lens.storage.settings import SettingsStore
 
 router = APIRouter(prefix="/api")
 
@@ -73,10 +77,57 @@ def _operation_store(request: Request) -> OperationStore:
     return store
 
 
+def _settings_store(request: Request) -> SettingsStore:
+    store = getattr(request.app.state, "settings_store", None)
+    if not isinstance(store, SettingsStore):
+        raise RuntimeError("settings store is not initialized")
+    return store
+
+
+def _settings_response(request: Request) -> SettingsResponse:
+    return SettingsResponse(settings=snapshot_settings(_manager(request).settings))
+
+
 def _wake_telemetry(request: Request) -> None:
     telemetry = getattr(request.app.state, "telemetry", None)
     if isinstance(telemetry, TelemetryService):
         telemetry.wake()
+
+
+@router.get("/settings", response_model=SettingsResponse)
+async def get_settings(request: Request) -> SettingsResponse:
+    return _settings_response(request)
+
+
+@router.put("/settings", response_model=SettingsResponse)
+async def update_settings(request: Request, payload: AppSettings) -> SettingsResponse:
+    manager = _manager(request)
+    defaults = getattr(request.app.state, "settings_defaults", None)
+    if not isinstance(defaults, AppSettings):
+        raise RuntimeError("settings defaults are not initialized")
+    changed = {key: value for key, value in payload.model_dump().items() if value != getattr(defaults, key)}
+    _settings_store(request).replace(changed)
+    apply_app_settings(manager.settings, payload)
+    manager.wake_watchdog()
+    telemetry = _telemetry(request)
+    telemetry.wake()
+    await telemetry.run_maintenance()
+    return _settings_response(request)
+
+
+@router.delete("/settings", response_model=SettingsResponse)
+async def reset_settings(request: Request) -> SettingsResponse:
+    manager = _manager(request)
+    defaults = getattr(request.app.state, "settings_defaults", None)
+    if not isinstance(defaults, AppSettings):
+        raise RuntimeError("settings defaults are not initialized")
+    _settings_store(request).clear()
+    apply_app_settings(manager.settings, defaults)
+    manager.wake_watchdog()
+    telemetry = _telemetry(request)
+    telemetry.wake()
+    await telemetry.run_maintenance()
+    return _settings_response(request)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -136,6 +187,30 @@ async def get_capabilities(request: Request) -> CapabilityReport:
 @router.get("/dashboard", response_model=LiveDashboard)
 async def get_dashboard(request: Request) -> LiveDashboard:
     return _telemetry(request).snapshot()
+
+
+@router.get("/events")
+async def dashboard_events(request: Request) -> StreamingResponse:
+    telemetry = _telemetry(request)
+
+    async def generate() -> AsyncIterator[str]:
+        async for dashboard in telemetry.stream():
+            if await request.is_disconnected():
+                break
+            if dashboard is None:
+                yield ": ping\n\n"
+                continue
+            yield f"event: dashboard\ndata: {dashboard.model_dump_json()}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/dashboard/refresh", response_model=LiveDashboard)

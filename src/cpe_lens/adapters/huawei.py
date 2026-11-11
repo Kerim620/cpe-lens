@@ -34,9 +34,9 @@ from cpe_lens.adapters.parsing import (
     find_list,
     hex_int,
     last_octet,
-    mask_phone,
     parse_cells,
     parse_clients,
+    parse_network_modes,
     parse_network_status,
     parse_signal,
     parse_traffic,
@@ -540,7 +540,7 @@ class HuaweiAdapter(DeviceAdapter):
             messages.append(
                 SmsMessage(
                     index=index,
-                    phone_masked=mask_phone(field(item, "Phone", "phone")),
+                    phone=text_field(item, "Phone", "phone"),
                     content=content,
                     received_at=text_field(item, "Date", "date"),
                 )
@@ -594,13 +594,22 @@ class HuaweiAdapter(DeviceAdapter):
             raise
         except Exception:
             pass
+        mode_list_payload: object = {}
+        try:
+            mode_list_payload = await self._call_read(client.net.net_mode_list)
+        except AuthExpiredError:
+            raise
+        except Exception:
+            pass
         mask = hex_int(field(mode_payload, "LTEBand", "lteband"))
+        current_mode = text_field(mode_payload, "NetworkMode", "networkmode")
         return MobileSettings(
             data_enabled=as_bool(field(data_payload, "dataswitch", "DataSwitch", "dataSwitch")),
             roaming_enabled=as_bool(field(connection_payload, "RoamAutoConnectEnable", "roam_auto_connect_enable")),
-            network_mode=text_field(mode_payload, "NetworkMode", "networkmode"),
+            network_mode=current_mode,
             lte_band_mask=text_field(mode_payload, "LTEBand", "lteband"),
             lte_bands=bands_from_mask(mask),
+            network_modes=parse_network_modes(mode_list_payload, current_mode),
         )
 
     async def set_mobile_data(self, enabled: bool) -> None:

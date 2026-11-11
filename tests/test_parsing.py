@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from cpe_lens.adapters.parsing import (
-    mask_mac_address,
-    mask_wan_ip,
+    normalize_mac_address,
+    normalize_wan_ip,
     parse_cells,
     parse_clients,
+    parse_network_modes,
     parse_network_status,
     parse_signal,
     parse_traffic,
@@ -109,7 +110,7 @@ def test_parse_traffic_and_optional_month() -> None:
     assert traffic.current_connect_seconds == 60
 
 
-def test_parse_clients_masks_mac_and_normalizes_connection_type() -> None:
+def test_parse_clients_keeps_full_mac_and_normalizes_connection_type() -> None:
     now = datetime(2026, 11, 10, 18, 0, tzinfo=UTC)
     clients = parse_clients(
         {
@@ -136,7 +137,7 @@ def test_parse_clients_masks_mac_and_normalizes_connection_type() -> None:
     )
     assert clients.count == 2
     laptop = clients.clients[0]
-    assert laptop.mac_masked == "**:**:**:11:22:33"
+    assert laptop.mac == "02:00:00:11:22:33"
     assert laptop.connection_type is ClientConnectionType.WIFI
     assert laptop.online_seconds == 3600
     nas = clients.clients[1]
@@ -145,7 +146,7 @@ def test_parse_clients_masks_mac_and_normalizes_connection_type() -> None:
     assert nas.online_seconds == 60
 
 
-def test_parse_network_status_masks_wan_ip() -> None:
+def test_parse_network_status_keeps_full_wan_ip() -> None:
     status = parse_network_status(
         {
             "CurrentNetworkTypeEx": "LTE",
@@ -160,13 +161,29 @@ def test_parse_network_status_masks_wan_ip() -> None:
     assert status.network_type == "LTE"
     assert status.roaming is True
     assert status.signal_bars == 4
-    assert status.wan_ip_masked == "198.51.*.*"
+    assert status.wan_ip == "198.51.100.23"
     assert status.connect_time_seconds == 120
 
 
-def test_identifier_masking_helpers() -> None:
-    assert mask_mac_address("aa:bb:cc:dd:ee:ff") == "**:**:**:dd:ee:ff"
-    assert mask_mac_address("not-a-mac") is None
-    assert mask_wan_ip("203.0.113.9") == "203.0.*.*"
-    assert mask_wan_ip("2001:db8:1234:5678::1") == "2001:db8:1234::"
-    assert mask_wan_ip("0.0.0.0") is None
+def test_parse_network_modes_only_exposes_reported_5g_modes() -> None:
+    payload = {
+        "ModeList": {
+            "Mode": [
+                {"Mode": "00", "Name": "Auto"},
+                {"Mode": "08", "Name": "5G only"},
+                {"Mode": "0308", "Name": "4G + 5G"},
+            ]
+        }
+    }
+    options = parse_network_modes(payload, current_mode="08")
+    assert [item.code for item in options] == ["00", "08", "0308"]
+    assert [item.is_5g for item in options] == [False, True, True]
+    assert parse_network_modes({}, current_mode="0308")[0].code == "0308"
+
+
+def test_identifier_normalization_helpers() -> None:
+    assert normalize_mac_address("aa:bb:cc:dd:ee:ff") == "aa:bb:cc:dd:ee:ff"
+    assert normalize_mac_address("not-a-mac") is None
+    assert normalize_wan_ip("203.0.113.9") == "203.0.113.9"
+    assert normalize_wan_ip("2001:db8:1234:5678::1") == "2001:db8:1234:5678::1"
+    assert normalize_wan_ip("0.0.0.0") is None

@@ -133,6 +133,8 @@ export function formatChartTime(value: string, language: Language, range: Histor
   const options: Intl.DateTimeFormatOptions =
     range === "7d"
       ? { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }
-      : { hour: "2-digit", minute: "2-digit", hour12: false };
+      : range === "15m"
+        ? { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }
+        : { hour: "2-digit", minute: "2-digit", hour12: false };
   return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", options).format(date);
 }

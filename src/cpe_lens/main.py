@@ -19,12 +19,14 @@ from cpe_lens.api.routes import router
 from cpe_lens.config import Settings
 from cpe_lens.logging_config import configure_logging
 from cpe_lens.models.errors import DomainError, ErrorInfo
+from cpe_lens.models.settings import AppSettings, apply_app_settings, snapshot_settings
 from cpe_lens.services.controls import OperationService
 from cpe_lens.services.device_manager import DeviceManager
 from cpe_lens.services.telemetry import TelemetryService
 from cpe_lens.storage.database import CapabilityStore, Database
 from cpe_lens.storage.history import HistoryStore
 from cpe_lens.storage.operations import OperationStore
+from cpe_lens.storage.settings import SettingsStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +77,26 @@ def create_app(settings: Settings | None = None, adapter_factory: AdapterFactory
         database = Database(resolved_settings.database_path)
         database.initialize()
         store = CapabilityStore(database)
+        settings_store = SettingsStore(database)
+        settings_defaults = snapshot_settings(resolved_settings)
+        overrides = settings_store.read()
+        if overrides:
+            try:
+                validated = AppSettings.model_validate({**settings_defaults.model_dump(), **overrides})
+            except ValueError:
+                _LOGGER.warning("Stored app settings are invalid; using .env defaults")
+                settings_store.clear()
+            else:
+                apply_app_settings(resolved_settings, validated)
+                # Drop rows created by older versions that saved every field,
+                # including values identical to the .env default.
+                effective = {
+                    key: value
+                    for key, value in overrides.items()
+                    if key in AppSettings.model_fields and value != getattr(settings_defaults, key)
+                }
+                if effective != overrides:
+                    settings_store.replace(effective)
         manager = DeviceManager(resolved_settings, store=store, adapter_factory=adapter_factory)
         history = HistoryStore(database)
         telemetry = TelemetryService(manager, history, resolved_settings)
@@ -86,6 +108,8 @@ def create_app(settings: Settings | None = None, adapter_factory: AdapterFactory
         app.state.telemetry = telemetry
         app.state.operation_store = operation_store
         app.state.operations = operations
+        app.state.settings_store = settings_store
+        app.state.settings_defaults = settings_defaults
         task = asyncio.create_task(manager.watchdog_loop())
         await telemetry.start()
         try:
@@ -111,6 +135,8 @@ def create_app(settings: Settings | None = None, adapter_factory: AdapterFactory
     app.state.history = None
     app.state.operations = None
     app.state.operation_store = None
+    app.state.settings_store = None
+    app.state.settings_defaults = None
 
     @app.middleware("http")
     async def csrf_guard(

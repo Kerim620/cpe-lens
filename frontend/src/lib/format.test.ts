@@ -4,6 +4,7 @@ import {
   displayValue,
   formatBitrate,
   formatBytes,
+  formatChartTime,
   formatDateTime,
   formatDb,
   formatDbm,
@@ -17,6 +18,11 @@ describe("formatters", () => {
     expect(formatDateTime(null, "en", "Never")).toBe("Never");
     expect(formatDateTime("not-a-date", "en", "Never")).toBe("Never");
     expect(formatDateTime("2026-11-10T12:00:00Z", "en", "Never")).not.toBe("Never");
+  });
+
+  it("keeps seconds for short ranges so adjacent samples stay distinguishable", () => {
+    expect(formatChartTime("2026-11-10T12:00:05Z", "en", "15m")).toMatch(/:05$/);
+    expect(formatChartTime("2026-11-10T12:00:05Z", "en", "1h")).not.toMatch(/:05$/);
   });
 
   it("translates numeric network types and keeps textual ones", () => {

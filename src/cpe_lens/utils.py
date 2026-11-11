@@ -10,20 +10,6 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def mask_identifier(value: object, *, visible_suffix: int = 4) -> str | None:
-    """Mask a subscriber or hardware identifier before it leaves the adapter."""
-
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text or text.upper() in {"REDACTED", "UNKNOWN", "N/A"}:
-        return None
-    alphanumeric = "".join(ch for ch in text if ch.isalnum())
-    if len(alphanumeric) <= visible_suffix:
-        return "*" * len(alphanumeric)
-    return f"{'*' * (len(alphanumeric) - visible_suffix)}{alphanumeric[-visible_suffix:]}"
-
-
 def normalize_device_address(raw: str) -> str:
     """Validate and normalize a HiLink management address.
 
@@ -83,9 +69,10 @@ def normalize_device_info(
     monitoring_status: object,
     current_plmn: object,
 ) -> dict[str, str | None]:
-    """Normalize raw HiLink identity responses into safe display fields.
+    """Normalize raw HiLink identity responses.
 
-    Raw IMSI, ICCID, serial and MAC fields are deliberately dropped.
+    Raw IMSI, ICCID and serial fields remain dropped; the IMEI is returned in
+    full because the user requested unmasked device identifiers.
     """
 
     model = text_field(information, "DeviceName", "DeviceType", "productfamily")
@@ -97,7 +84,7 @@ def normalize_device_info(
         "firmware_version": text_field(information, "SoftwareVersion", "FirmwareVersion"),
         "web_ui_version": text_field(information, "WebUIVersion"),
         "device_name": text_field(information, "DeviceName"),
-        "imei_masked": mask_identifier(text_field(information, "Imei")),
+        "imei": text_field(information, "Imei"),
         "operator": text_field(current_plmn, "FullName", "ShortName", "OperatorName"),
         "network_type": text_field(
             monitoring_status,

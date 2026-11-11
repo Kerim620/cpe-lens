@@ -1,24 +1,28 @@
+import { ArrowRight, LockKeyhole, RadioTower } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-
-import { api } from "../api/client";
-import type { MobileSettings } from "../api/types";
-import { DisconnectedPanel } from "../components/DisconnectedPanel";
-import { ErrorBanner } from "../components/ErrorBanner";
-import { Icon } from "../components/Icon";
-import { LoadingState } from "../components/LoadingState";
-import { Notice } from "../components/Notice";
-import { OperationDialog } from "../components/OperationDialog";
-import { PageHeader } from "../components/PageHeader";
-import { StatusBadge } from "../components/StatusBadge";
-import { useDevice } from "../hooks/useDevice";
-import { useOperation } from "../hooks/useOperation";
-import { useResource } from "../hooks/useResource";
-import { useI18n } from "../i18n/I18nProvider";
-import type { TranslationKey } from "../i18n/translations";
 import { Link } from "react-router-dom";
 
-const modes: Array<{ value: string; key: TranslationKey }> = [
+import { api } from "@/api/client";
+import type { MobileSettings, NetworkModeOption } from "@/api/types";
+import { DataNotice, LoadingState } from "@/components/dashboard/data-state";
+import { DisconnectedState } from "@/components/dashboard/disconnected-state";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { SectionCard } from "@/components/dashboard/section-card";
+import { StatusBadge } from "@/components/dashboard/status-badge";
+import { ErrorBanner } from "@/components/error-banner";
+import { OperationDialog } from "@/components/operation-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useDevice } from "@/hooks/useDevice";
+import { useOperation } from "@/hooks/useOperation";
+import { useResource } from "@/hooks/useResource";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { TranslationKey } from "@/i18n/translations";
+
+const baseModes: Array<{ value: string; key: TranslationKey }> = [
   { value: "00", key: "radio.mode.auto" },
   { value: "03", key: "radio.mode.lte" },
   { value: "02", key: "radio.mode.3g" },
@@ -28,14 +32,18 @@ const modes: Array<{ value: string; key: TranslationKey }> = [
   { value: "0201", key: "radio.mode.3g2g" },
 ];
 
+function modeLabel(option: NetworkModeOption): string {
+  return option.label?.trim() || option.code;
+}
+
 function CapabilityLine({ id }: { id: string }) {
   const { t } = useI18n();
   const { snapshot } = useDevice();
   const capability = snapshot?.capability_report?.capabilities.find((item) => item.id === id);
   return (
-    <div className="flex items-center justify-between gap-3 rounded-control border border-line px-3 py-2 text-sm">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-xs">
       <span>{t(`capability.name.${id}` as TranslationKey)}</span>
-      {capability ? <StatusBadge status={capability.status} /> : <span className="text-xs text-muted">{t("common.dash")}</span>}
+      {capability ? <StatusBadge status={capability.status} /> : <span className="text-muted-foreground">{t("common.dash")}</span>}
     </div>
   );
 }
@@ -49,6 +57,17 @@ export function LocksPage() {
   const operation = useOperation(() => void mobile.reload());
   const [mode, setMode] = useState("00");
   const [bands, setBands] = useState("");
+
+  const modes = [
+    ...baseModes,
+    ...(mobile.data?.network_modes ?? [])
+      .filter((option) => !baseModes.some((base) => base.value === option.code))
+      .map((option) => ({
+        value: option.code,
+        label: modeLabel(option),
+        is5g: option.is_5g,
+      })),
+  ];
 
   useEffect(() => {
     if (mobile.data) {
@@ -69,65 +88,59 @@ export function LocksPage() {
     });
   };
 
-  if (deviceLoading) {
-    return <LoadingState />;
-  }
+  if (deviceLoading) return <LoadingState rows={3} />;
 
   return (
-    <div className="space-y-6">
-      <PageHeader subtitle={t("locks.subtitle")} title={t("locks.title")} />
+    <div className="space-y-5">
+      <PageHeader description={t("locks.subtitle")} title={t("locks.title")} />
       {!connected ? (
-        <DisconnectedPanel />
+        <DisconnectedState />
       ) : (
         <>
-          <Notice variant="warning" icon="alert">{t("locks.warning")}</Notice>
+          <DataNotice>{t("locks.warning")}</DataNotice>
           {mobile.error ? <ErrorBanner error={mobile.error} /> : null}
           {mobile.loading && !mobile.data ? (
-            <LoadingState />
-          ) : mobile.data ? (
+            <LoadingState rows={2} />
+          ) : (
             <div className="grid gap-4 lg:grid-cols-2">
-              <section className="card p-5" aria-labelledby="radio-settings">
-                <h2 className="flex items-center gap-2 text-base" id="radio-settings">
-                  <Icon name="signal" size={18} />
-                  {t("locks.radioTitle")}
-                </h2>
-                <div className="mt-3 space-y-2">
+              <SectionCard title={<span className="flex items-center gap-2"><RadioTower className="size-4 text-primary" />{t("locks.radioTitle")}</span>}>
+                <div className="mb-4 space-y-1.5">
                   <CapabilityLine id="network_mode" />
                   <CapabilityLine id="band_lock" />
                 </div>
-                <form className="mt-4 space-y-4" onSubmit={submit}>
-                  <div>
-                    <label className="label" htmlFor="radio-mode">{t("locks.networkMode")}</label>
-                    <select className="field" id="radio-mode" onChange={(event) => setMode(event.target.value)} value={mode}>
-                      {modes.map((item) => <option key={item.value} value={item.value}>{t(item.key)}</option>)}
-                    </select>
+                <form className="space-y-4" onSubmit={submit}>
+                  <div className="space-y-1.5">
+                    <Label>{t("locks.networkMode")}</Label>
+                    <Select onValueChange={setMode} value={mode}>
+                      <SelectTrigger aria-label={t("locks.networkMode")}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {modes.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {"key" in item ? t(item.key as TranslationKey) : item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div>
-                    <label className="label" htmlFor="radio-bands">{t("locks.lteBands")}</label>
-                    <input className="field" id="radio-bands" onChange={(event) => setBands(event.target.value)} placeholder={t("locks.bandsPlaceholder")} value={bands} />
-                    <p className="hint">{t("locks.bandsHint")}</p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="radio-bands">{t("locks.lteBands")}</Label>
+                    <Input id="radio-bands" onChange={(event) => setBands(event.target.value)} placeholder={t("locks.bandsPlaceholder")} value={bands} />
+                    <p className="text-[10px] leading-4 text-muted-foreground">{t("locks.bandsHint")}</p>
                   </div>
-                  <Notice variant="warning" icon="alert">{t("locks.radioWarning")}</Notice>
-                  <button className="btn btn-danger" disabled={operation.planning} type="submit">
-                    <Icon name="check" size={16} />
-                    {t("locks.reviewChange")}
-                  </button>
+                  <DataNotice>{t("locks.radioWarning")}</DataNotice>
+                  <Button disabled={operation.planning} type="submit">{t("locks.reviewChange")}</Button>
                 </form>
-              </section>
+              </SectionCard>
 
-              <section className="card p-5" aria-labelledby="lock-readonly">
-                <h2 className="flex items-center gap-2 text-base" id="lock-readonly">
-                  <Icon name="lock" size={18} />
-                  {t("locks.readOnlyTitle")}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-muted">{t("locks.readOnlyBody")}</p>
-                <div className="mt-3 space-y-2">
-                  <CapabilityLine id="cell_lock" />
-                </div>
-                <Link className="btn mt-4" to="/signal">{t("locks.viewCells")}<Icon name="arrowRight" size={16} /></Link>
-              </section>
+              <SectionCard title={<span className="flex items-center gap-2"><LockKeyhole className="size-4 text-primary" />{t("locks.readOnlyTitle")}</span>}>
+                <p className="text-xs leading-5 text-muted-foreground">{t("locks.readOnlyBody")}</p>
+                <div className="mt-3"><CapabilityLine id="cell_lock" /></div>
+                <Button asChild className="mt-4" size="sm" variant="outline">
+                  <Link to="/signal">{t("locks.viewCells")}<ArrowRight className="size-3.5" /></Link>
+                </Button>
+              </SectionCard>
             </div>
-          ) : null}
+          )}
         </>
       )}
       <OperationDialog controller={operation} onClose={() => void mobile.reload()} />

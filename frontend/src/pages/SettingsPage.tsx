@@ -1,63 +1,132 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 
-import { api } from "../api/client";
-import type { DiagnosticReport, HealthResponse } from "../api/types";
-import { ErrorBanner } from "../components/ErrorBanner";
-import { Icon } from "../components/Icon";
-import { InfoRow } from "../components/InfoRow";
-import { LoadingState } from "../components/LoadingState";
-import { Notice } from "../components/Notice";
-import { PageHeader } from "../components/PageHeader";
-import { useResource } from "../hooks/useResource";
-import { useI18n } from "../i18n/I18nProvider";
-import type { TranslationKey } from "../i18n/translations";
+import { api } from "@/api/client";
+import type { AppSettings, SettingsResponse } from "@/api/types";
+import { LoadingState } from "@/components/dashboard/data-state";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { SectionCard } from "@/components/dashboard/section-card";
+import { ErrorBanner } from "@/components/error-banner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toUiError } from "@/hooks/useDevice";
+import type { UiError } from "@/hooks/useDevice";
+import { useResource } from "@/hooks/useResource";
+import { useI18n } from "@/i18n/I18nProvider";
+import type { TranslationKey } from "@/i18n/translations";
+
+const fields: Array<{
+  key: keyof AppSettings;
+  label: TranslationKey;
+  hint: TranslationKey;
+  min: number;
+  max: number;
+  step: number;
+}> = [
+  { key: "sample_interval_seconds", label: "settings.sampleInterval", hint: "settings.sampleIntervalHint", min: 0, max: 3600, step: 1 },
+  { key: "monitor_interval_seconds", label: "settings.monitorInterval", hint: "settings.monitorIntervalHint", min: 0, max: 3600, step: 1 },
+  { key: "telemetry_section_timeout_seconds", label: "settings.sectionTimeout", hint: "settings.sectionTimeoutHint", min: 1, max: 120, step: 1 },
+  { key: "history_raw_days", label: "settings.rawRetention", hint: "settings.rawRetentionHint", min: 7, max: 365, step: 1 },
+  { key: "history_hourly_days", label: "settings.hourlyRetention", hint: "settings.hourlyRetentionHint", min: 30, max: 3650, step: 1 },
+];
 
 export function SettingsPage() {
   const { t } = useI18n();
-  const loadHealth = useCallback(() => api.health(), []);
-  const loadReport = useCallback(() => api.diagnosticReport(), []);
-  const health = useResource<HealthResponse>(loadHealth, true);
-  const report = useResource<DiagnosticReport>(loadReport, true);
+  const loadSettings = useCallback(() => api.getSettings(), []);
+  const resource = useResource<SettingsResponse>(loadSettings, true);
+  const [form, setForm] = useState<AppSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<UiError | null>(null);
+  const [saved, setSaved] = useState(false);
 
-  if (health.loading && !health.data) {
-    return <LoadingState />;
-  }
-  const settings = (report.data?.settings ?? {}) as Record<string, unknown>;
+  useEffect(() => {
+    if (resource.data) {
+      setForm(resource.data.settings);
+    }
+  }, [resource.data]);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!form) return;
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const response = await api.updateSettings(form);
+      setForm(response.settings);
+      setSaved(true);
+      await resource.reload();
+    } catch (requestError) {
+      setError(toUiError(requestError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reset = async () => {
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const response = await api.resetSettings();
+      setForm(response.settings);
+      setSaved(true);
+      await resource.reload();
+    } catch (requestError) {
+      setError(toUiError(requestError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (resource.loading && !resource.data) return <LoadingState rows={3} />;
 
   return (
-    <div className="space-y-6">
-      <PageHeader subtitle={t("settings.subtitle")} title={t("settings.title")} />
-      {health.error ? <ErrorBanner error={health.error} /> : null}
-      {report.error ? <ErrorBanner error={report.error} /> : null}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="card p-5" aria-labelledby="settings-about">
-          <h2 className="flex items-center gap-2 text-base" id="settings-about"><Icon name="settings" size={18} />{t("settings.aboutTitle")}</h2>
-          <dl className="mt-2">
-            <InfoRow label={t("diagnostics.version")} value={health.data?.version ?? t("common.dash")} />
-            <InfoRow label={t("settings.license")} value="MIT" />
-            <InfoRow label={t("settings.backend")} value="FastAPI · huawei-lte-api" />
-            <InfoRow label={t("settings.network")} value={t("app.localOnly")} />
-          </dl>
-          <div className="mt-3 space-y-2">
-            <Notice variant="success" icon="shield">{t("settings.securityNote")}</Notice>
-          </div>
-        </section>
+    <div className="space-y-5">
+      <PageHeader description={t("settings.subtitle")} title={t("settings.title")} />
+      {resource.error ? <ErrorBanner error={resource.error} /> : null}
+      {error ? <ErrorBanner error={error} /> : null}
 
-        <section className="card p-5" aria-labelledby="settings-data">
-          <h2 className="flex items-center gap-2 text-base" id="settings-data"><Icon name="traffic" size={18} />{t("settings.dataTitle")}</h2>
-          <dl className="mt-2">
-            {Object.entries(settings).map(([key, value]) => (
-              <InfoRow key={key} label={t(`diagnostics.setting.${key}` as TranslationKey)} value={String(value)} />
-            ))}
-          </dl>
-          <p className="mt-3 text-xs leading-5 text-muted">{t("settings.dataNote")}</p>
-        </section>
+      <SectionCard
+        actions={saved ? <Badge variant="success">{t("settings.saved")}</Badge> : null}
+        title={t("settings.runtimeTitle")}
+      >
+        {form ? (
+          <form className="space-y-4" onSubmit={submit}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {fields.map((field) => (
+                <div className="space-y-1.5" key={field.key}>
+                  <Label htmlFor={`settings-${field.key}`}>{t(field.label)}</Label>
+                  <Input
+                    id={`settings-${field.key}`}
+                    max={field.max}
+                    min={field.min}
+                    onChange={(event) => {
+                      setSaved(false);
+                      setForm({ ...form, [field.key]: Number(event.target.value) });
+                    }}
+                    required
+                    step={field.step}
+                    type="number"
+                    value={form[field.key]}
+                  />
+                  <p className="text-[10px] leading-4 text-muted-foreground">{t(field.hint)}</p>
+                </div>
+              ))}
+            </div>
 
-        <section className="card p-5 lg:col-span-2" aria-labelledby="settings-appearance">
-          <h2 className="flex items-center gap-2 text-base" id="settings-appearance"><Icon name="sun" size={18} />{t("settings.appearanceTitle")}</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">{t("settings.appearanceBody")}</p>
-        </section>
-      </div>
+            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+              <Button disabled={saving} type="submit">{saving ? t("settings.saving") : t("settings.save")}</Button>
+              <Button disabled={saving} onClick={() => void reset()} type="button" variant="outline">
+                {t("settings.resetDefaults")}
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </SectionCard>
+
     </div>
   );
 }

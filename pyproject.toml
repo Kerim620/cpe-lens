@@ -3,7 +3,7 @@ name = "cpe-lens"
 version = "0.1.0"
 description = "Local-only Huawei HiLink CPE management panel"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "CPE Lens contributors" }]
 dependencies = [
@@ -11,7 +11,7 @@ dependencies = [
     "pydantic>=2.11,<3.0",
     "pydantic-settings>=2.7,<3.0",
     "huawei-lte-api>=2.0.1,<3.0",
-    "uvicorn[standard]>=0.34,<1.0",
+    "uvicorn>=0.34,<1.0",
 ]
 
 [project.scripts]
@@ -54,16 +54,16 @@ include = [
     "frontend/tsconfig.node.json",
     "frontend/tailwind.config.js",
     "frontend/postcss.config.js",
+    "frontend/dist",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "pyproject.toml",
-    "uv.lock",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "start.sh",
 ]
-exclude = [".uv-cache", ".python", "**/__pycache__", "**/*.pyc", "frontend/node_modules", "frontend/dist"]
-
-[tool.uv]
-package = true
+exclude = ["**/__pycache__", "**/*.pyc", "frontend/node_modules"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -72,8 +72,8 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
-extend-exclude = [".venv", ".uv-cache", ".python", "frontend", "data"]
+target-version = "py311"
+extend-exclude = [".venv", "frontend", "data"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "RUF"]
@@ -83,7 +83,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 quote-style = "double"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 files = ["src/cpe_lens", "tests"]
 mypy_path = "src"
 strict = false

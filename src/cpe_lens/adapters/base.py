@@ -65,7 +65,7 @@ class DeviceAdapter(ABC):
 
     @abstractmethod
     async def get_clients(self) -> ClientSnapshot:
-        """Return currently associated clients with masked MAC addresses."""
+        """Return currently associated clients with full MAC addresses."""
 
     @abstractmethod
     async def probe_capabilities(self) -> list[CapabilityResult]:

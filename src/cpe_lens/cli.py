@@ -164,15 +164,19 @@ def start(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run CPE Lens")
     parser.add_argument("--host", default=settings.host)
     parser.add_argument("--port", type=int, default=settings.port)
-    parser.add_argument("--no-build", action="store_true", help="Serve the existing frontend build")
+    parser.add_argument("--build", action="store_true", help="Build the frontend first (requires Node.js)")
     args = parser.parse_args(argv)
 
     root = _project_root()
-    if not args.no_build:
+    if args.build:
         _build_frontend(root)
     dist = root / "frontend" / "dist"
     if not (dist / "index.html").is_file():
-        print("Frontend build is missing. Run `uv run start` without --no-build.", file=sys.stderr)
+        print(
+            "Frontend build is missing. Run `python -m cpe_lens start --build` on a machine with Node.js, "
+            "or copy a built frontend/dist directory into the project.",
+            file=sys.stderr,
+        )
         return 1
 
     os.chdir(root)

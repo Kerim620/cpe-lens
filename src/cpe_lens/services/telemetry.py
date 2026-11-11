@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -59,10 +59,10 @@ class TelemetryService:
         self._sample_lock = asyncio.Lock()
         self._wake = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
+        self._subscribers: set[asyncio.Queue[LiveDashboard | None]] = set()
 
     async def start(self) -> None:
-        if self._settings.sample_interval_seconds > 0:
-            self._tasks.append(asyncio.create_task(self._sample_loop(), name="cpe-lens-sampler"))
+        self._tasks.append(asyncio.create_task(self._sample_loop(), name="cpe-lens-sampler"))
         self._tasks.append(asyncio.create_task(self._maintenance_loop(), name="cpe-lens-history-maintenance"))
 
     async def stop(self) -> None:
@@ -75,6 +75,28 @@ class TelemetryService:
 
     def wake(self) -> None:
         self._wake.set()
+
+    def _publish(self, dashboard: LiveDashboard | None = None) -> None:
+        snapshot = dashboard or self.snapshot()
+        for queue in list(self._subscribers):
+            if queue.full():
+                with suppress(asyncio.QueueEmpty):
+                    queue.get_nowait()
+            with suppress(asyncio.QueueFull):
+                queue.put_nowait(snapshot)
+
+    async def stream(self) -> AsyncGenerator[LiveDashboard | None, None]:
+        queue: asyncio.Queue[LiveDashboard | None] = asyncio.Queue(maxsize=1)
+        self._subscribers.add(queue)
+        try:
+            yield self.snapshot()
+            while True:
+                try:
+                    yield await asyncio.wait_for(queue.get(), timeout=15)
+                except TimeoutError:
+                    yield None
+        finally:
+            self._subscribers.discard(queue)
 
     def snapshot(self) -> LiveDashboard:
         return LiveDashboard(
@@ -120,7 +142,9 @@ class TelemetryService:
 
             self._sampled_at = now
             await self._record_history(now)
-            return self.snapshot()
+            dashboard = self.snapshot()
+            self._publish(dashboard)
+            return dashboard
 
     async def _fetch(
         self,
@@ -202,11 +226,19 @@ class TelemetryService:
         interval = self._settings.sample_interval_seconds
         min_elapsed = max(0.2, min(2.5, interval * 0.5)) if interval > 0 else 0.2
         if elapsed < min_elapsed:
-            # A wake-up/manual refresh can happen moments after the previous
-            # sample. Keep the older baseline and wait for a meaningful window
-            # instead of reporting an artificially huge instantaneous rate.
+            # A settings change or manual refresh can happen moments after the
+            # previous sample. Keep the last displayed rate for this one update
+            # instead of flashing zero until a full interval has elapsed.
+            previous_speed = self._traffic.data
             return (
-                data.model_copy(update={"today_download_bytes": today[0], "today_upload_bytes": today[1]}),
+                data.model_copy(
+                    update={
+                        "download_bps": previous_speed.download_bps if previous_speed is not None else None,
+                        "upload_bps": previous_speed.upload_bps if previous_speed is not None else None,
+                        "today_download_bytes": today[0],
+                        "today_upload_bytes": today[1],
+                    }
+                ),
                 None,
                 None,
             )
@@ -292,36 +324,46 @@ class TelemetryService:
             _LOGGER.warning("Could not record telemetry sample: %s", type(exc).__name__)
 
     async def _sample_loop(self) -> None:
-        interval = self._settings.sample_interval_seconds
+        loop = asyncio.get_running_loop()
         while True:
+            interval = self._settings.sample_interval_seconds
+            if interval <= 0:
+                await self._wake.wait()
+                self._wake.clear()
+                continue
+            started = loop.time()
             try:
                 await self.sample_once()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 _LOGGER.warning("Telemetry sample failed: %s", type(exc).__name__)
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._wake.wait(), timeout=interval)
-            self._wake.clear()
+            elapsed = loop.time() - started
+            delay = max(0.0, interval - elapsed)
+            if delay > 0:
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self._wake.wait(), timeout=delay)
+                self._wake.clear()
+
+    async def run_maintenance(self) -> None:
+        try:
+            result = await asyncio.to_thread(
+                self._history.aggregate_and_prune,
+                raw_retention_days=self._settings.history_raw_days,
+                hourly_retention_days=self._settings.history_hourly_days,
+            )
+            if result.deleted_raw or result.aggregated_hours:
+                _LOGGER.info(
+                    "History maintenance: %s hours aggregated, %s raw rows pruned",
+                    result.aggregated_hours,
+                    result.deleted_raw,
+                )
+        except Exception as exc:
+            _LOGGER.warning("History maintenance failed: %s", type(exc).__name__)
 
     async def _maintenance_loop(self) -> None:
         while True:
-            try:
-                result = await asyncio.to_thread(
-                    self._history.aggregate_and_prune,
-                    raw_retention_days=self._settings.history_raw_days,
-                    hourly_retention_days=self._settings.history_hourly_days,
-                )
-                if result.deleted_raw or result.aggregated_hours:
-                    _LOGGER.info(
-                        "History maintenance: %s hours aggregated, %s raw rows pruned",
-                        result.aggregated_hours,
-                        result.deleted_raw,
-                    )
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                _LOGGER.warning("History maintenance failed: %s", type(exc).__name__)
+            await self.run_maintenance()
             await asyncio.sleep(3600)
 
     def _reset_sections(self) -> None:

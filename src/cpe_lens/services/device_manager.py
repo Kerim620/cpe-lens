@@ -87,6 +87,7 @@ class DeviceManager:
         self._reconnect_count = 0
         self._auth_failures = 0
         self._closed = False
+        self._watchdog_wake = asyncio.Event()
 
     @property
     def settings(self) -> Settings:
@@ -94,6 +95,11 @@ class DeviceManager:
 
     def has_credentials(self) -> bool:
         return self._password is not None and self._address is not None
+
+    def wake_watchdog(self) -> None:
+        """Re-evaluate the watchdog interval after a settings change."""
+
+        self._watchdog_wake.set()
 
     def snapshot(self) -> ConnectionSnapshot:
         return ConnectionSnapshot(
@@ -278,14 +284,21 @@ class DeviceManager:
                 self._last_error = None
 
     async def watchdog_loop(self) -> None:
-        interval = self._settings.monitor_interval_seconds
-        if interval <= 0:
-            return
         while True:
+            interval = self._settings.monitor_interval_seconds
+            if interval <= 0:
+                await self._watchdog_wake.wait()
+                self._watchdog_wake.clear()
+                continue
             try:
-                await asyncio.sleep(interval)
+                await asyncio.wait_for(self._watchdog_wake.wait(), timeout=interval)
+            except TimeoutError:
+                pass
             except asyncio.CancelledError:
                 return
+            else:
+                self._watchdog_wake.clear()
+                continue
             try:
                 await self.heartbeat()
             except asyncio.CancelledError:

@@ -8,10 +8,10 @@ CPE Lens 是一个只在本机运行的 Huawei HiLink CPE 管理面板，面向�
 
 ## 2. 技术方案
 
-- 后端：Python 3.12、FastAPI、`huawei-lte-api`
+- 后端：Python 3.11+、FastAPI、`huawei-lte-api`
 - 前端：React、TypeScript、Vite、Tailwind CSS
 - 数据库：SQLite
-- 项目管理与启动：uv；前端依赖仍由 npm 管理
+- 项目管理与启动：Python 标准 venv + pip；前端依赖由 npm 管理（仅开发前端时需要）
 - 平台：先支持 macOS
 - 设备：第一版管理一台 Huawei HiLink CPE；具体型号和功能以探测结果为准
 - 语言：简体中文、英文
@@ -21,9 +21,9 @@ CPE Lens 是一个只在本机运行的 Huawei HiLink CPE 管理面板，面向�
 计划提供统一命令：
 
 ```bash
-uv run dev
-uv run start
-uv run test
+python -m cpe_lens dev
+python -m cpe_lens start
+python -m pytest
 ```
 
 ## 3. 功能范围
@@ -34,7 +34,7 @@ uv run test
 - 自动处理 Cookie、Session 和 CSRF Token。
 - 读取型号、固件、Web UI 版本和设备信息。
 - 启动或手动触发能力探测。
-- 密码只保存在后端内存，不写入 SQLite 或日志。
+- 密码默认只保存在后端内存，不写入 SQLite 或日志；用户显式勾选浏览器“记住”时才写入 localStorage，并需提示风险。
 
 每项能力显示以下状态之一：可用、实验性、当前不可用、无权限、不支持或探测失败。超时等临时错误不能直接判定为不支持。
 
@@ -76,9 +76,9 @@ uv run test
 ### 诊断
 
 - 显示接口错误和能力探测结果。
-- 导出脱敏诊断报告。
+- 导出诊断报告。
 - 密码、Token、Cookie 和短信正文不得进入报告。
-- IMEI、IMSI、ICCID、手机号、MAC 和公网 IP 默认遮挡。
+- IMEI、MAC、WAN IP 和手机号完整显示；仅登录密码、Cookie、Token、Session、Wi-Fi/APN 密码不暴露。
 
 ## 4. 写操作安全
 

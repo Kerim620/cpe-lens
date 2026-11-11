@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from cpe_lens.models.controls import NetworkModeOption
 from cpe_lens.models.telemetry import (
     CellEntry,
     CellRadio,
@@ -117,30 +118,21 @@ def quality_from_rsrp(rsrp_dbm: float | None) -> SignalQuality | None:
     return SignalQuality.POOR
 
 
-def mask_mac_address(value: object) -> str | None:
+def normalize_mac_address(value: object) -> str | None:
     text = as_text(value)
     if text is None:
         return None
     hex_chars = re.sub(r"[^0-9A-Fa-f]", "", text)
     if len(hex_chars) != 12:
         return None
-    pairs = [hex_chars[index : index + 2].lower() for index in range(0, 12, 2)]
-    return "**:**:**:" + ":".join(pairs[3:])
+    return ":".join(hex_chars[index : index + 2].lower() for index in range(0, 12, 2))
 
 
-def mask_wan_ip(value: object) -> str | None:
+def normalize_wan_ip(value: object) -> str | None:
     text = as_text(value)
     if text is None or text in {"0.0.0.0", "::", "0:0:0:0:0:0:0:0"}:
         return None
-    if ":" in text:
-        groups = [group for group in text.split(":") if group]
-        if len(groups) < 3:
-            return None
-        return ":".join(groups[:3]) + "::"
-    parts = text.split(".")
-    if len(parts) != 4 or not all(part.isdigit() for part in parts):
-        return None
-    return f"{parts[0]}.{parts[1]}.*.*"
+    return text
 
 
 def _nested(data: object, *names: str) -> object | None:
@@ -377,14 +369,14 @@ def parse_clients(payload: object, now: datetime) -> ClientSnapshot:
 
         hostname = text_field(item, "HostName", "hostname", "Name")
         ip_address = text_field(item, "IpAddress", "IPAddress", "Ip", "IP")
-        mac = mask_mac_address(field(item, "MacAddress", "MACAddress", "Mac"))
+        mac = normalize_mac_address(field(item, "MacAddress", "MACAddress", "Mac"))
         if hostname is None and ip_address is None and mac is None:
             continue
         clients.append(
             ClientInfo(
                 hostname=hostname,
                 ip_address=ip_address,
-                mac_masked=mac,
+                mac=mac,
                 connection_type=connection_type,
                 online_seconds=parse_online_seconds(
                     field(item, "AssociatedTime", "AssocTime", "OnlineTime", "ConnectTime"),
@@ -406,7 +398,7 @@ def parse_network_status(status: object, current_plmn: object = None) -> Network
         network_type=text_field(status, "CurrentNetworkTypeEx", "NetworkType", "CurrentNetworkType"),
         roaming=as_bool(field(status, "RoamingStatus", "Roaming")),
         signal_bars=int_field(status, "SignalIcon", "SignalBars", "SignalBar"),
-        wan_ip_masked=mask_wan_ip(field(status, "WanIPAddress", "WanIPv6Address")),
+        wan_ip=normalize_wan_ip(field(status, "WanIPAddress", "WanIPv6Address")),
         connect_time_seconds=int_field(status, "CurrentConnectTime", "ConnectTime"),
         uptime_seconds=int_field(status, "Uptime", "UpTime", "uptime"),
     )
@@ -438,14 +430,39 @@ def find_list(payload: object, names: tuple[str, ...], depth: int = 0) -> list[o
     return []
 
 
-def mask_phone(value: object) -> str | None:
-    text = as_text(value)
-    if text is None:
-        return None
-    digits = re.sub(r"[^0-9]", "", text)
-    if len(digits) <= 4:
-        return "*" * len(digits) if digits else None
-    return f"{'*' * (len(digits) - 4)}{digits[-4:]}"
+def parse_network_modes(payload: object, current_mode: str | None = None) -> list[NetworkModeOption]:
+    """Best-effort parse of firmware-specific ``net/net-mode-list``.
+
+    The library has no 5G enum. We only expose modes the device actually
+    reports, and never invent a 5G code.
+    """
+
+    items = find_list(payload, ("ModeList", "Modes", "NetModeList", "NetworkModeList", "Mode"))
+    options: list[NetworkModeOption] = []
+    seen: set[str] = set()
+
+    def add(code: object, label: object = None) -> None:
+        value = as_text(code)
+        if value is None or value in seen:
+            return
+        text = as_text(label)
+        normalized = f"{value} {text or ''}".lower()
+        is_5g = "5g" in normalized or "nr" in normalized
+        options.append(NetworkModeOption(code=value, label=text, is_5g=is_5g))
+        seen.add(value)
+
+    for item in items:
+        if isinstance(item, dict):
+            add(
+                field(item, "NetworkMode", "Mode", "Value", "Index"),
+                field(item, "Name", "ModeName", "Description", "DisplayName"),
+            )
+        else:
+            add(item)
+
+    if current_mode and current_mode not in seen:
+        add(current_mode)
+    return options
 
 
 def hex_int(value: object) -> int | None:

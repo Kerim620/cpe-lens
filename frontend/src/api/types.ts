@@ -8,7 +8,6 @@ export type CapabilityStatus =
 
 export type CapabilityReason =
   | "ok"
-  | "simulated"
   | "write_not_verified"
   | "no_safe_probe"
   | "no_support"
@@ -62,7 +61,7 @@ export interface DeviceInfo {
   firmware_version: string | null;
   web_ui_version: string | null;
   device_name: string | null;
-  imei_masked: string | null;
+  imei: string | null;
   operator: string | null;
   network_type: string | null;
   connection_status: string | null;
@@ -97,6 +96,18 @@ export interface HealthResponse {
   status: string;
   version: string;
   sample_interval_seconds: number;
+}
+
+export interface AppSettings {
+  sample_interval_seconds: number;
+  monitor_interval_seconds: number;
+  telemetry_section_timeout_seconds: number;
+  history_raw_days: number;
+  history_hourly_days: number;
+}
+
+export interface SettingsResponse {
+  settings: AppSettings;
 }
 
 export const CAPABILITY_STATUSES: CapabilityStatus[] = [
@@ -166,7 +177,7 @@ export interface CellSnapshot {
 export interface ClientInfo {
   hostname: string | null;
   ip_address: string | null;
-  mac_masked: string | null;
+  mac: string | null;
   connection_type: ClientConnectionType;
   online_seconds: number | null;
 }
@@ -181,7 +192,7 @@ export interface NetworkStatus {
   network_type: string | null;
   roaming: boolean | null;
   signal_bars: number | null;
-  wan_ip_masked: string | null;
+  wan_ip: string | null;
   connect_time_seconds: number | null;
   uptime_seconds: number | null;
 }
@@ -271,7 +282,7 @@ export interface ApnProfile {
 
 export interface SmsMessage {
   index: number;
-  phone_masked: string | null;
+  phone: string | null;
   content: string;
   received_at: string | null;
   is_read: boolean | null;
@@ -284,12 +295,19 @@ export interface SmsPage {
   has_more: boolean;
 }
 
+export interface NetworkModeOption {
+  code: string;
+  label: string | null;
+  is_5g: boolean;
+}
+
 export interface MobileSettings {
   data_enabled: boolean | null;
   roaming_enabled: boolean | null;
   network_mode: string | null;
   lte_band_mask: string | null;
   lte_bands: number[];
+  network_modes: NetworkModeOption[];
 }
 
 export interface DhcpSettings {

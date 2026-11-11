@@ -9,7 +9,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from cpe_lens.adapters.parsing import mask_phone
 from cpe_lens.config import Settings
 from cpe_lens.models.capability import CapabilityStatus
 from cpe_lens.models.controls import (
@@ -63,8 +62,7 @@ class RadioParams(StrictModel):
     @field_validator("network_mode")
     @classmethod
     def _valid_mode(cls, value: str) -> str:
-        allowed = {"00", "01", "02", "0201", "03", "0301", "0302"}
-        if value not in allowed:
+        if not value.isdigit() or not 2 <= len(value) <= 10:
             raise ValueError("unsupported network mode")
         return value
 
@@ -277,13 +275,20 @@ class RadioAction(Action):
 
     async def plan(self, manager: DeviceManager, params: BaseModel) -> PlanData:
         assert isinstance(params, RadioParams)
-        current = (await manager.read_mobile()).model_dump()
+        current = await manager.read_mobile()
+        allowed = {"00", "01", "02", "0201", "03", "0301", "0302"}
+        allowed.update(item.code for item in current.network_modes)
+        if current.network_mode:
+            allowed.add(current.network_mode)
+        if params.network_mode not in allowed:
+            raise OperationUnavailableError("network mode is not reported by this device")
+        current_values = current.model_dump()
         proposed = {"network_mode": params.network_mode, "lte_bands": params.lte_bands}
         return PlanData(
-            current=current,
+            current=current_values,
             proposed=proposed,
             warnings=["control.radioUpdate.disconnectWarning", "control.radioUpdate.delayWarning"],
-            log_current=current,
+            log_current=current_values,
             log_proposed=proposed,
         )
 
@@ -536,13 +541,12 @@ class SmsSendAction(Action):
 
     async def plan(self, manager: DeviceManager, params: BaseModel) -> PlanData:
         assert isinstance(params, SmsSendParams)
-        masked = mask_phone(params.phone)
         return PlanData(
             current={},
-            proposed={"phone_masked": masked, "message": params.message, "message_length": len(params.message)},
+            proposed={"phone": params.phone, "message": params.message, "message_length": len(params.message)},
             warnings=["control.smsSend.warning"],
             log_current={},
-            log_proposed={"phone_masked": masked, "message_length": len(params.message)},
+            log_proposed={"phone": params.phone, "message_length": len(params.message)},
         )
 
     async def apply(self, manager: DeviceManager, params: BaseModel) -> dict[str, Any]:
@@ -568,10 +572,10 @@ class SmsDeleteAction(Action):
         if current is None:
             raise OperationUnavailableError("SMS not found")
         return PlanData(
-            current={"index": current.index, "phone_masked": current.phone_masked, "received_at": current.received_at},
+            current={"index": current.index, "phone": current.phone, "received_at": current.received_at},
             proposed={"deleted": True, "index": params.index},
             warnings=["control.smsDelete.warning"],
-            log_current={"index": current.index, "phone_masked": current.phone_masked},
+            log_current={"index": current.index, "phone": current.phone},
             log_proposed={"deleted": True, "index": params.index},
         )
 

@@ -5,13 +5,15 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
 
 class Settings(BaseSettings):
     """Application settings loaded from ``CPE_LENS_*`` environment variables."""
 
     model_config = SettingsConfigDict(
         env_prefix="CPE_LENS_",
-        env_file=".env",
+        env_file=_ENV_FILE if _ENV_FILE.is_file() else ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )

@@ -14,6 +14,7 @@ from cpe_lens.models.controls import (
     DhcpSettings,
     FirewallSettings,
     MobileSettings,
+    NetworkModeOption,
     SmsMessage,
     SmsPage,
     UssdState,
@@ -61,11 +62,15 @@ class FakeAdapter(DeviceAdapter):
             network_mode="00",
             lte_band_mask="7fffffffffffffff",
             lte_bands=[],
+            network_modes=[
+                NetworkModeOption(code="08", label="5G only", is_5g=True),
+                NetworkModeOption(code="0308", label="4G + 5G", is_5g=True),
+            ],
         )
         self.messages = [
             SmsMessage(
                 index=0,
-                phone_masked="********1234",
+                phone="+15551234567",
                 content="Test message",
                 received_at="2026-01-01T10:00:00Z",
             )
@@ -112,6 +117,7 @@ class FakeAdapter(DeviceAdapter):
             firmware_version="FW-1.0",
             web_ui_version="WEB-1.0",
             device_name="Generic HiLink CPE",
+            imei="123456789012345",
             operator="Test Operator",
             network_type="LTE",
         )
@@ -150,7 +156,7 @@ class FakeAdapter(DeviceAdapter):
             network_type="LTE",
             roaming=False,
             signal_bars=4,
-            wan_ip_masked="198.51.*.*",
+            wan_ip="198.51.100.23",
             connect_time_seconds=3600,
             uptime_seconds=86400,
         )
@@ -215,14 +221,14 @@ class FakeAdapter(DeviceAdapter):
                 ClientInfo(
                     hostname="Test-Laptop",
                     ip_address="192.168.8.10",
-                    mac_masked="**:**:**:00:00:01",
+                    mac="02:00:00:00:00:01",
                     connection_type=ClientConnectionType.WIFI,
                     online_seconds=3600,
                 ),
                 ClientInfo(
                     hostname="Test-NAS",
                     ip_address="192.168.8.11",
-                    mac_masked="**:**:**:00:00:02",
+                    mac="02:00:00:00:00:02",
                     connection_type=ClientConnectionType.ETHERNET,
                     online_seconds=86400,
                 ),
@@ -326,7 +332,7 @@ class FakeAdapter(DeviceAdapter):
         self.messages.append(
             SmsMessage(
                 index=max((item.index for item in self.messages), default=-1) + 1,
-                phone_masked=("****" + phone[-4:]) if phone else None,
+                phone=phone,
                 content=message,
                 received_at=None,
             )

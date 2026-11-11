@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { api } from "../api/client";
+import { api, eventsUrl } from "../api/client";
 import type { LiveDashboard } from "../api/types";
 import { toUiError } from "./useDevice";
 import type { UiError } from "./useDevice";
@@ -32,14 +32,10 @@ export function LiveDashboardProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const poll = useCallback(async (silent: boolean) => {
-    if (busyRef.current) {
-      return;
-    }
+  const loadSnapshot = useCallback(async (silent: boolean) => {
+    if (busyRef.current) return;
     busyRef.current = true;
-    if (!silent) {
-      setRefreshing(true);
-    }
+    if (!silent) setRefreshing(true);
     try {
       const next = await api.dashboard();
       if (mountedRef.current) {
@@ -47,9 +43,7 @@ export function LiveDashboardProvider({ children }: { children: ReactNode }) {
         setError(null);
       }
     } catch (requestError) {
-      if (mountedRef.current) {
-        setError(toUiError(requestError));
-      }
+      if (mountedRef.current) setError(toUiError(requestError));
     } finally {
       busyRef.current = false;
       if (mountedRef.current) {
@@ -60,36 +54,82 @@ export function LiveDashboardProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void poll(false);
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void poll(true);
+    let source: EventSource | null = null;
+    let fallbackTimer: number | null = null;
+    let reconnectTimer: number | null = null;
+    let disposed = false;
+
+    const fallback = () => {
+      if (fallbackTimer !== null || disposed) return;
+      fallbackTimer = window.setInterval(() => {
+        if (document.visibilityState === "visible") {
+          void loadSnapshot(true);
+        }
+      }, 5_000);
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      if (typeof EventSource === "undefined") {
+        fallback();
+        return;
       }
-    }, 5_000);
-    return () => window.clearInterval(timer);
-  }, [poll]);
+      source = new EventSource(eventsUrl);
+      source.addEventListener("dashboard", (event) => {
+        try {
+          const next = JSON.parse((event as MessageEvent<string>).data) as LiveDashboard;
+          if (mountedRef.current) {
+            setDashboard(next);
+            setLoading(false);
+            setError(null);
+          }
+        } catch {
+          // Ignore a malformed event and keep the last good dashboard.
+        }
+      });
+      source.addEventListener("open", () => {
+        if (fallbackTimer !== null) {
+          window.clearInterval(fallbackTimer);
+          fallbackTimer = null;
+        }
+      });
+      source.addEventListener("error", () => {
+        source?.close();
+        source = null;
+        fallback();
+        if (reconnectTimer === null) {
+          reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+          }, 10_000);
+        }
+      });
+    };
+
+    void loadSnapshot(false);
+    connect();
+
+    return () => {
+      disposed = true;
+      source?.close();
+      if (fallbackTimer !== null) window.clearInterval(fallbackTimer);
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+    };
+  }, [loadSnapshot]);
 
   const refresh = useCallback(async () => {
-    if (busyRef.current) {
-      return;
-    }
+    if (busyRef.current) return;
     busyRef.current = true;
     setRefreshing(true);
     setError(null);
     try {
       const next = await api.refreshDashboard();
-      if (mountedRef.current) {
-        setDashboard(next);
-      }
+      if (mountedRef.current) setDashboard(next);
     } catch (requestError) {
-      if (mountedRef.current) {
-        setError(toUiError(requestError));
-      }
+      if (mountedRef.current) setError(toUiError(requestError));
     } finally {
       busyRef.current = false;
-      if (mountedRef.current) {
-        setRefreshing(false);
-      }
+      if (mountedRef.current) setRefreshing(false);
     }
   }, []);
 

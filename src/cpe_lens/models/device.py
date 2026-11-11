@@ -11,8 +11,8 @@ from cpe_lens.models.errors import ErrorInfo
 class DeviceInfo(BaseModel):
     """Normalized device identity.
 
-    Raw HiLink fields and sensitive identifiers are intentionally absent. Only a
-    masked IMEI is ever exposed to the browser.
+    Raw HiLink fields remain absent. The IMEI is exposed in full per the product
+    requirement; login passwords and session secrets are never part of this model.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -22,7 +22,7 @@ class DeviceInfo(BaseModel):
     firmware_version: str | None = None
     web_ui_version: str | None = None
     device_name: str | None = None
-    imei_masked: str | None = None
+    imei: str | None = None
     operator: str | None = None
     network_type: str | None = None
     connection_status: str | None = None

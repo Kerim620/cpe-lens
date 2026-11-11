@@ -1,0 +1,1 @@
+import{j as o,N as r}from"./vendor-radix-DSvCNBKY.js";import{p as s}from"./index-CLYpvjXO.js";function n({className:t,...e}){return o.jsx(r,{className:s("text-xs font-medium text-foreground",t),...e})}export{n as L};

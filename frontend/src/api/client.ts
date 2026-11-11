@@ -7,6 +7,7 @@ import type {
   DeviceInfo,
   DiagnosticReport,
   ErrorInfo,
+  AppSettings,
   HealthResponse,
   HistoryRange,
   HistoryResponse,
@@ -15,12 +16,14 @@ import type {
   OperationLogEntry,
   OperationPlan,
   OperationResult,
+  SettingsResponse,
   SmsPage,
   UssdState,
   WifiSettings,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+export const eventsUrl = `${API_BASE}/api/events`;
 
 export class ApiError extends Error {
   readonly code: string;
@@ -136,6 +139,18 @@ export const api = {
   dashboard: () => request<LiveDashboard>("/api/dashboard", undefined, 10_000),
   refreshDashboard: () =>
     request<LiveDashboard>("/api/dashboard/refresh", { method: "POST" }, 120_000),
+  getSettings: () => request<SettingsResponse>("/api/settings"),
+  updateSettings: (settings: AppSettings) =>
+    request<SettingsResponse>(
+      "/api/settings",
+      {
+        method: "PUT",
+        body: JSON.stringify(settings),
+      },
+      60_000,
+    ),
+  resetSettings: () =>
+    request<SettingsResponse>("/api/settings", { method: "DELETE" }),
   history: (range: HistoryRange) =>
     request<HistoryResponse>(`/api/history?range=${encodeURIComponent(range)}`, undefined, 20_000),
   wifi: () => request<WifiSettings>("/api/wifi", undefined, 20_000),

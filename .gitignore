@@ -18,7 +18,7 @@ htmlcov/
 
 # Build output
 build/
-dist/
+/dist/
 
 # Runtime data
 /data/
@@ -29,7 +29,6 @@ dist/
 
 # Frontend
 frontend/node_modules/
-frontend/dist/
 frontend/coverage/
 frontend/playwright-report/
 frontend/test-results/

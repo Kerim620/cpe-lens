@@ -23,9 +23,11 @@ export function useOperation(onSuccess?: (result: OperationResult) => void): Ope
   const [planning, setPlanning] = useState(false);
   const [applying, setApplying] = useState(false);
   const successRef = useRef(onSuccess);
+  const requestRef = useRef(0);
   successRef.current = onSuccess;
 
   const reset = useCallback(() => {
+    requestRef.current += 1;
     setPlan(null);
     setResult(null);
     setError(null);
@@ -34,17 +36,25 @@ export function useOperation(onSuccess?: (result: OperationResult) => void): Ope
   }, []);
 
   const start = useCallback(async (action: string, params: Record<string, unknown>) => {
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
     setPlanning(true);
     setError(null);
     setResult(null);
     setPlan(null);
     try {
       const next = await api.planOperation(action, params);
-      setPlan(next);
+      if (requestRef.current === requestId) {
+        setPlan(next);
+      }
     } catch (requestError) {
-      setError(toUiError(requestError));
+      if (requestRef.current === requestId) {
+        setError(toUiError(requestError));
+      }
     } finally {
-      setPlanning(false);
+      if (requestRef.current === requestId) {
+        setPlanning(false);
+      }
     }
   }, []);
 

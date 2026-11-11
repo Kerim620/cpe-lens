@@ -1,41 +1,37 @@
-import { CapabilityList } from "../components/CapabilityList";
-import { ConnectionPanel } from "../components/ConnectionPanel";
-import { ErrorBanner } from "../components/ErrorBanner";
-import { Icon } from "../components/Icon";
-import { InfoRow } from "../components/InfoRow";
-import { LoadingState } from "../components/LoadingState";
-import { Notice } from "../components/Notice";
-import { PageHeader } from "../components/PageHeader";
-import { errorInfoToUi, useDevice } from "../hooks/useDevice";
-import { useI18n } from "../i18n/I18nProvider";
-import { formatDateTime, formatNetworkType } from "../lib/format";
+import { ShieldCheck, Unplug } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+import { CapabilityList } from "@/components/dashboard/capability-list";
+import { LoadingState } from "@/components/dashboard/data-state";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { SectionCard } from "@/components/dashboard/section-card";
+import { ConnectionPanel } from "@/components/connection-panel";
+import { ErrorBanner } from "@/components/error-banner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useDevice } from "@/hooks/useDevice";
+import { useI18n } from "@/i18n/I18nProvider";
+import { formatDateTime } from "@/lib/format";
+
+function Info({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-border py-2 last:border-0">
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className="max-w-[65%] break-words text-right font-mono text-[11px] text-foreground">{value ?? "—"}</dd>
+    </div>
+  );
+}
 
 export function DevicePage() {
   const { t, language } = useI18n();
-  const {
-    snapshot,
-    loading,
-    refreshing,
-    connecting,
-    probing,
-    error,
-    connect,
-    disconnect,
-    probe,
-    refreshDevice,
-  } = useDevice();
+  const navigate = useNavigate();
+  const { snapshot, loading, connecting, probing, error, connect, disconnect, probe, clearError } = useDevice();
 
-  if (loading) {
-    return <LoadingState />;
-  }
-
+  if (loading) return <LoadingState rows={4} />;
   if (!snapshot?.connected) {
     return (
-      <div className="space-y-6">
-        <PageHeader subtitle={t("device.subtitle")} title={t("device.title")} />
-        {snapshot?.last_error && !error ? (
-          <ErrorBanner error={errorInfoToUi(snapshot.last_error)} title={t("overview.offlineTitle")} />
-        ) : null}
+      <div className="space-y-5">
+        <PageHeader description={t("device.subtitle")} title={t("device.title")} />
         <ConnectionPanel connecting={connecting} error={error} onConnect={connect} />
       </div>
     );
@@ -43,137 +39,71 @@ export function DevicePage() {
 
   const device = snapshot.device;
   const report = snapshot.capability_report;
-  const capabilities = report?.capabilities ?? [];
-  const hasExperimental = capabilities.some((capability) => capability.status === "experimental");
+  const issues = report?.capabilities.filter((item) => ["unsupported", "no_permission", "probe_failed", "unavailable"].includes(item.status)).length ?? 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         actions={
           <>
-            <button
-              className="btn"
-              disabled={refreshing || probing}
-              onClick={() => void refreshDevice()}
-              type="button"
-            >
-              <Icon className={refreshing ? "animate-spin" : ""} name="refresh" size={16} />
-              {t("device.refreshInfo")}
-            </button>
-            <button className="btn btn-primary" disabled={probing || refreshing} onClick={() => void probe()} type="button">
-              <Icon className={probing ? "animate-spin" : ""} name={probing ? "refresh" : "flask"} size={16} />
+            <Button disabled={probing} onClick={() => void probe()} size="sm" variant="outline">
+              <ShieldCheck className={probing ? "size-3.5 animate-pulse" : "size-3.5"} />
               {probing ? t("device.reprobing") : t("device.reprobe")}
-            </button>
-            <button
-              className="btn btn-danger"
-              disabled={probing || refreshing}
-              onClick={() => void disconnect()}
-              type="button"
+            </Button>
+            <Button
+              onClick={() => {
+                void disconnect().then((ok) => {
+                  if (ok) navigate("/");
+                });
+              }}
+              size="sm"
+              variant="destructive"
             >
-              <Icon name="plug" size={16} />
+              <Unplug className="size-3.5" />
               {t("device.disconnect")}
-            </button>
+            </Button>
           </>
         }
-        subtitle={t("device.subtitle")}
+        description={t("device.subtitle")}
         title={t("device.title")}
       />
-
-      {snapshot.last_error ? (
-        <ErrorBanner error={errorInfoToUi(snapshot.last_error)} title={t("device.probeError")} />
-      ) : null}
-      {!device ? (
-        <Notice variant="warning" icon="alert">
-          {t("device.infoUnavailable")}
-        </Notice>
-      ) : null}
-      {hasExperimental ? (
-        <Notice icon="alert" variant="warning">
-          {t("device.experimentalNotice")}
-        </Notice>
-      ) : null}
+      {error ? <ErrorBanner error={error} onDismiss={clearError} /> : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="card p-5" aria-labelledby="device-identity">
-          <h2 className="flex items-center gap-2 text-base" id="device-identity">
-            <Icon name="device" size={18} />
-            {t("device.identity")}
-          </h2>
-          <dl className="mt-2">
-            <InfoRow label={t("device.model")} value={device?.model ?? t("common.dash")} />
-            <InfoRow label={t("device.deviceName")} value={device?.device_name ?? t("common.dash")} />
-            <InfoRow label={t("device.hardware")} value={device?.hardware_version ?? t("common.dash")} />
-            <InfoRow label={t("device.firmware")} value={device?.firmware_version ?? t("common.dash")} />
-            <InfoRow label={t("device.webui")} value={device?.web_ui_version ?? t("common.dash")} />
-            <InfoRow label={t("device.operator")} value={device?.operator ?? t("common.dash")} />
-            <InfoRow
-              label={t("device.networkType")}
-              value={formatNetworkType(device?.network_type, language)}
-            />
-            <InfoRow label={t("device.imei")} mono value={device?.imei_masked ?? t("common.dash")} />
+        <SectionCard description={device?.model ?? undefined} title={t("device.identity")}>
+          <dl>
+            <Info label={t("device.model")} value={device?.model ?? null} />
+            <Info label={t("device.hardware")} value={device?.hardware_version ?? null} />
+            <Info label={t("device.firmware")} value={device?.firmware_version ?? null} />
+            <Info label={t("device.webui")} value={device?.web_ui_version ?? null} />
+            <Info label={t("device.deviceName")} value={device?.device_name ?? null} />
+            <Info label={t("device.imei")} value={device?.imei ?? null} />
+            <Info label={t("device.operator")} value={device?.operator ?? null} />
+            <Info label={t("device.networkType")} value={device?.network_type ?? null} />
           </dl>
-        </section>
-
-        <section className="card p-5" aria-labelledby="device-session">
-          <h2 className="flex items-center gap-2 text-base" id="device-session">
-            <Icon name="shield" size={18} />
-            {t("device.session")}
-          </h2>
-          <dl className="mt-2">
-            <InfoRow label={t("device.address")} mono value={snapshot.address ?? t("common.dash")} />
-            <InfoRow label={t("device.username")} value={snapshot.username ?? t("common.dash")} />
-            <InfoRow
-              label={t("device.connectedSince")}
-              value={formatDateTime(snapshot.connected_at, language, t("common.dash"))}
-            />
-            <InfoRow
-              label={t("device.lastSeen")}
-              value={formatDateTime(snapshot.last_seen_at, language, t("common.dash"))}
-            />
-            <InfoRow label={t("device.reconnects")} value={snapshot.reconnect_count} />
+        </SectionCard>
+        <SectionCard description={snapshot.address ?? undefined} title={t("device.session")}>
+          <dl>
+            <Info label={t("device.address")} value={snapshot.address} />
+            <Info label={t("device.username")} value={snapshot.username} />
+            <Info label={t("device.connectedSince")} value={formatDateTime(snapshot.connected_at, language, t("common.dash"))} />
+            <Info label={t("device.lastSeen")} value={formatDateTime(snapshot.last_seen_at, language, t("common.dash"))} />
+            <Info label={t("device.reconnects")} value={String(snapshot.reconnect_count)} />
+            <Info label={t("device.connectionStatus")} value={device?.connection_status ?? null} />
           </dl>
-          <p className="mt-3 text-xs leading-5 text-muted">{t("connection.passwordHint")}</p>
-        </section>
+          <div className="mt-3 flex items-center gap-2">
+            <Badge variant={issues > 0 ? "warning" : "success"}>{t("device.filter.issues")}: {issues}</Badge>
+            <Badge variant="outline">{t("device.capabilityCount", { count: report?.capabilities.length ?? 0 })}</Badge>
+          </div>
+        </SectionCard>
       </div>
 
-      <section className="card p-5" aria-labelledby="device-capabilities">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="flex items-center gap-2 text-base" id="device-capabilities">
-              <Icon name="flask" size={18} />
-              {t("device.capabilities")}
-            </h2>
-            <p className="mt-1 text-sm text-muted">
-              {report
-                ? t("device.capabilityCount", { count: capabilities.length })
-                : t("device.empty")}
-              {report ? (
-                <span className="ml-2 text-xs">
-                  {formatDateTime(report.probed_at, language, t("common.dash"))}
-                </span>
-              ) : null}
-            </p>
-          </div>
-          <button
-            className="btn"
-            disabled={probing}
-            onClick={() => void probe()}
-            type="button"
-          >
-            <Icon className={probing ? "animate-spin" : ""} name={probing ? "refresh" : "flask"} size={16} />
-            {probing ? t("device.reprobing") : t("device.reprobe")}
-          </button>
-        </div>
-        <div className="mt-4">
-          {capabilities.length > 0 ? (
-            <CapabilityList capabilities={capabilities} />
-          ) : (
-            <p className="rounded-control border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
-              {t("device.empty")}
-            </p>
-          )}
-        </div>
-      </section>
+      <SectionCard
+        description={report ? t("device.probedAt", { time: formatDateTime(report.probed_at, language, t("common.dash")) }) : t("device.empty")}
+        title={t("device.capabilities")}
+      >
+        {report ? <CapabilityList capabilities={report.capabilities} /> : <p className="py-8 text-center text-xs text-muted-foreground">{t("device.empty")}</p>}
+      </SectionCard>
     </div>
   );
 }

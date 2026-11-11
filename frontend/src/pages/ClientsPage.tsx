@@ -1,113 +1,79 @@
+import { Cable, Search, Users, Wifi } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { ClientsTable } from "../components/ClientsTable";
-import { DisconnectedPanel } from "../components/DisconnectedPanel";
-import { ErrorBanner } from "../components/ErrorBanner";
-import { Icon } from "../components/Icon";
-import { LiveNotice } from "../components/LiveNotice";
-import { LoadingState } from "../components/LoadingState";
-import { PageHeader } from "../components/PageHeader";
-import { RefreshLiveButton } from "../components/RefreshLiveButton";
-import { SectionError } from "../components/SectionError";
-import { useDevice } from "../hooks/useDevice";
-import { useLiveDashboard } from "../hooks/useLiveDashboard";
-import { useI18n } from "../i18n/I18nProvider";
-import { formatDateTime } from "../lib/format";
+import { LoadingState, SectionError } from "@/components/dashboard/data-state";
+import { ClientsTable } from "@/components/dashboard/clients-table";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { SectionCard } from "@/components/dashboard/section-card";
+import { ErrorBanner } from "@/components/error-banner";
+import { Input } from "@/components/ui/input";
+import { useDevice } from "@/hooks/useDevice";
+import { useLiveDashboard } from "@/hooks/useLiveDashboard";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export function ClientsPage() {
-  const { t, language } = useI18n();
-  const { snapshot: deviceSnapshot, loading: deviceLoading } = useDevice();
-  const { dashboard, loading, refreshing, error, refresh } = useLiveDashboard();
+  const { t } = useI18n();
+  const { snapshot, loading: deviceLoading } = useDevice();
+  const { dashboard, loading: liveLoading, error } = useLiveDashboard();
   const [query, setQuery] = useState("");
-  const clientsSection = dashboard?.clients;
-  const clientSnapshot = clientsSection?.data;
-  const connected =
-    (dashboard?.connected ?? false) && (deviceSnapshot?.connected ?? dashboard?.connected ?? false);
-
+  const connected = snapshot?.connected ?? false;
+  const clients = dashboard?.clients.data;
   const filtered = useMemo(() => {
-    const clients = clientSnapshot?.clients ?? [];
+    const rows = clients?.clients ?? [];
     const needle = query.trim().toLowerCase();
-    if (!needle) {
-      return clients;
-    }
-    return clients.filter((client) =>
-      [client.hostname, client.ip_address, client.mac_masked]
-        .filter(Boolean)
-        .some((value) => value?.toLowerCase().includes(needle)),
+    if (!needle) return rows;
+    return rows.filter((client) =>
+      [client.hostname, client.ip_address, client.mac].some((value) => value?.toLowerCase().includes(needle)),
     );
-  }, [clientSnapshot, query]);
+  }, [clients, query]);
 
-  if ((deviceLoading || loading) && !dashboard) {
-    return <LoadingState />;
+  if (deviceLoading || (liveLoading && !dashboard)) return <LoadingState rows={4} />;
+  if (!connected) {
+    return (
+      <div className="space-y-5">
+        <PageHeader description={t("clients.subtitle")} title={t("clients.title")} />
+        <p className="rounded-md border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">{t("live.disconnectedTitle")}</p>
+      </div>
+    );
   }
 
+  const rows = clients?.clients ?? [];
+  const wifiCount = rows.filter((client) => client.connection_type === "wifi").length;
+  const ethernetCount = rows.filter((client) => client.connection_type === "ethernet").length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
-        actions={<RefreshLiveButton onClick={() => void refresh()} refreshing={refreshing} />}
-        subtitle={t("clients.subtitle")}
+        description={t("clients.subtitle")}
         title={t("clients.title")}
       />
+      {error ? <ErrorBanner error={error} /> : null}
 
-      {!dashboard ? (
-        <div className="space-y-4">
-          {error ? <ErrorBanner error={error} /> : null}
-          <p className="text-sm text-muted">{t("live.waiting")}</p>
-        </div>
-      ) : !connected ? (
-        <DisconnectedPanel />
-      ) : (
-        <>
-          <LiveNotice />
-          {error ? <ErrorBanner error={error} /> : null}
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-            <span>{t("live.sampledAt", { time: formatDateTime(dashboard.sampled_at, language, t("common.dash")) })}</span>
-            <span className="chip border-line bg-elevated text-muted">
-              {t("clients.count", { count: clientSnapshot?.count ?? 0 })}
-            </span>
+      <div className="grid grid-cols-3 gap-3">
+        <MetricCard color="var(--chart-lte)" icon={<Users className="size-4" />} label={t("clients.total")} value={clients?.count ?? rows.length} />
+        <MetricCard color="var(--chart-download)" icon={<Wifi className="size-4" />} label={t("clients.connection.wifi")} value={wifiCount} />
+        <MetricCard color="var(--chart-upload)" icon={<Cable className="size-4" />} label={t("clients.connection.ethernet")} value={ethernetCount} />
+      </div>
+
+      <SectionCard
+        actions={
+          <div className="relative w-52">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label={t("clients.search")}
+              className="h-8 pl-8 text-xs"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("clients.search")}
+              value={query}
+            />
           </div>
-
-          {clientsSection ? <SectionError section={clientsSection} /> : null}
-
-          <section className="card p-5" aria-labelledby="clients-list">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="flex items-center gap-2 text-base" id="clients-list">
-                <Icon name="clients" size={18} />
-                {t("clients.title")}
-              </h2>
-              <div className="relative w-full sm:w-72">
-                <label className="sr-only" htmlFor="client-search">
-                  {t("clients.search")}
-                </label>
-                <Icon
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-                  name="search"
-                  size={15}
-                />
-                <input
-                  className="field pl-9"
-                  id="client-search"
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t("clients.searchPlaceholder")}
-                  type="search"
-                  value={query}
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <ClientsTable
-                clients={filtered}
-                noResults={query.trim() ? t("clients.noMatch") : t("clients.empty")}
-              />
-              <p className="flex items-start gap-2 text-xs leading-5 text-muted">
-                <Icon className="mt-0.5 shrink-0" name="lock" size={14} />
-                {t("clients.macMaskedNote")}
-              </p>
-            </div>
-          </section>
-        </>
-      )}
+        }
+        title={t("clients.listTitle", { count: filtered.length })}
+      >
+        <ClientsTable clients={filtered} noResults={t("clients.noResults")} />
+        {dashboard?.clients ? <div className="mt-3"><SectionError section={dashboard.clients} /></div> : null}
+      </SectionCard>
     </div>
   );
 }

@@ -55,7 +55,7 @@ class SmsMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     index: int
-    phone_masked: str | None = None
+    phone: str | None = None
     content: str
     received_at: str | None = None
     is_read: bool | None = None
@@ -70,6 +70,14 @@ class SmsPage(BaseModel):
     has_more: bool = False
 
 
+class NetworkModeOption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    label: str | None = None
+    is_5g: bool = False
+
+
 class MobileSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -78,6 +86,7 @@ class MobileSettings(BaseModel):
     network_mode: str | None = None
     lte_band_mask: str | None = None
     lte_bands: list[int] = Field(default_factory=list)
+    network_modes: list[NetworkModeOption] = Field(default_factory=list)
 
 
 class DhcpSettings(BaseModel):

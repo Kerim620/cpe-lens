@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from cpe_lens.capabilities.definitions import CAPABILITIES
 from cpe_lens.config import Settings
+from cpe_lens.main import create_app
 from tests.fakes import FakeFactory
 
 
@@ -264,6 +265,7 @@ def test_apn_and_sms_actions_never_persist_secrets(client: TestClient) -> None:
     assert report.status_code == 200
     assert apn_password not in logs
     assert message not in logs
+    assert "+15551234567" in logs
     assert apn_password not in report.text
     assert message not in report.text
 
@@ -354,3 +356,78 @@ def test_cross_origin_state_changing_request_is_rejected(client: TestClient) -> 
     )
     assert response.status_code == 403
     assert response.json()["code"] == "invalid_origin"
+
+
+def test_settings_are_saved_to_database_and_can_be_reset(settings: Settings, fake_factory: FakeFactory) -> None:
+    defaults = settings.model_copy(deep=True)
+    app = create_app(settings, adapter_factory=fake_factory)
+    with TestClient(app) as client:
+        initial = client.get("/api/settings")
+        assert initial.status_code == 200
+        body = initial.json()
+        assert body["settings"]["sample_interval_seconds"] == 0
+
+        payload = {
+            **body["settings"],
+            "sample_interval_seconds": 12,
+            "monitor_interval_seconds": 45,
+            "telemetry_section_timeout_seconds": 10,
+            "history_raw_days": 90,
+            "history_hourly_days": 400,
+        }
+        updated = client.put("/api/settings", json=payload)
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["settings"]["sample_interval_seconds"] == 12
+        assert client.get("/api/health").json()["sample_interval_seconds"] == 12
+        assert client.get("/api/diagnostics/report").json()["settings"]["history_raw_days"] == 90
+        assert payload["sample_interval_seconds"] == 12
+        assert b"12" in settings.database_path.read_bytes()
+
+    # A new app with the same database must load the persisted overrides.
+    fresh = create_app(defaults, adapter_factory=FakeFactory())
+    with TestClient(fresh) as client:
+        reloaded = client.get("/api/settings").json()
+        assert reloaded["settings"]["sample_interval_seconds"] == 12
+        reset = client.delete("/api/settings")
+        assert reset.status_code == 200
+        assert reset.json()["settings"]["sample_interval_seconds"] == 0
+
+
+def test_settings_reject_invalid_ranges(client: TestClient) -> None:
+    response = client.put(
+        "/api/settings",
+        json={
+            "sample_interval_seconds": -1,
+            "monitor_interval_seconds": 0,
+            "telemetry_section_timeout_seconds": 10,
+            "history_raw_days": 30,
+            "history_hourly_days": 365,
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_request"
+
+
+def test_identifiers_are_returned_in_full_and_5g_modes_are_discovered(client: TestClient) -> None:
+    _connect(client)
+    snapshot = client.get("/api/device").json()
+    assert snapshot["device"]["imei"] == "123456789012345"
+
+    dashboard = client.post("/api/dashboard/refresh").json()
+    status = dashboard["status"]["data"]
+    assert status["wan_ip"] == "198.51.100.23"
+
+    clients = dashboard["clients"]["data"]["clients"]
+    assert clients[0]["mac"].count(":") == 5
+
+    mobile = client.get("/api/mobile").json()
+    codes = {item["code"] for item in mobile["network_modes"]}
+    assert {"08", "0308"} <= codes
+    plan = client.post(
+        "/api/operations/plan",
+        json={"action": "radio.update", "params": {"network_mode": "08", "lte_bands": None}},
+    ).json()
+    result = client.post("/api/operations/apply", json={"token": plan["token"], "confirm": True})
+    assert result.status_code == 200
+    assert result.json()["status"] == "success"
+    assert client.get("/api/mobile").json()["network_mode"] == "08"
