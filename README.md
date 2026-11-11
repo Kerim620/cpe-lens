@@ -10,6 +10,18 @@ CPE Lens 是一个只在本机运行的 Huawei HiLink CPE 管理面板。它通�
 - 凭据默认只保存在后端内存，不写入 SQLite 或日志；只有用户显式勾选“记住”时才存入浏览器 localStorage，并提示明文风险
 - 不提供内置虚拟设备或样本数据；自动测试使用测试目录注入的测试替身，不进入生产代码
 
+## 特别感谢
+
+CPE Lens 能够连接并管理 Huawei HiLink 设备，核心基础来自
+[**huawei-lte-api**](https://github.com/Salamek/huawei-lte-api)（作者 Adam Schubert）。
+
+本项目对该库的登录与 Session/CSRF 处理、设备信息、信号、流量、客户端、Wi-Fi、APN、短信、USSD
+以及网络模式等接口进行了封装和界面化。没有 `huawei-lte-api` 持续维护这些设备的兼容实现，就没有
+CPE Lens。特别感谢作者及所有贡献者。
+
+如果你也在开发 Huawei HiLink 相关工具，欢迎优先支持这个项目：
+<https://github.com/Salamek/huawei-lte-api>
+
 ## 已实现
 
 ### 设备探测与连接
