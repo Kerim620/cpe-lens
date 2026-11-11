@@ -163,7 +163,7 @@ python -m mypy
 
 `huawei-lte-api` 文档列出的已测试设备包括多款 B/E 系列 LTE 路由、5G CPE Pro 系列和 H165-383 等；
 其他 Huawei HiLink 设备通常也可能工作，但**不保证**。本项目不根据相近型号推断支持，而是以当前设备
-探测结果为准。详见 [兼容性说明](docs/COMPATIBILITY.md) 和 [实机验证清单](docs/DEVICE_VERIFICATION.md)。
+探测结果为准。详见 [兼容性说明](docs/COMPATIBILITY.md)。
 
 > **写操作尚未在真实设备上验证。** 所有写路径都有能力检查、二次确认和回读验证，但在实机上测试
 > 前仍应视为实验性。不要在没有物理恢复手段的情况下修改 Wi-Fi、APN、网络模式或防火墙。
@@ -209,19 +209,15 @@ cd frontend && npm test
 自动测试不连接真实设备，而是通过 `tests/fakes.py` 注入测试替身；生产代码没有虚拟设备适配器或内置样本。
 当前结果：78 个后端测试、22 个前端测试，lint、mypy、TypeScript 类型检查和前端构建均通过。
 前端生产构建初始加载约 288 KB gzip（其中图表 vendor 约 117 KB），12 个页面按需加载；详见
-[前端重构记录](docs/FRONTEND_REFACTOR.md)。
+[前端设计规范](docs/FRONTEND_DESIGN.md)。
 
 ## 文档
 
 - [产品需求](docs/PRD.md)
 - [前端设计规范](docs/FRONTEND_DESIGN.md)
-- [前端重构记录](docs/FRONTEND_REFACTOR.md)
-- [开发计划](docs/DEVELOPMENT_PLAN.md)
 - [兼容性说明](docs/COMPATIBILITY.md)
-- [实机验证清单](docs/DEVICE_VERIFICATION.md)
-- [阶段一实现说明](docs/PHASE1.md)
-- [阶段二实现说明](docs/PHASE2.md)
-- [阶段三实现说明](docs/PHASE3.md)
+
+内部开发计划、实机验证清单和阶段记录保留在本地，不随开源仓库发布。
 
 ## 许可证
 

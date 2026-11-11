@@ -40,3 +40,7 @@ frontend/.vite/
 .env.*
 !.env.example
 .DS_Store
+
+# Internal development notes, never published
+/AGENTS.md
+/.internal/
